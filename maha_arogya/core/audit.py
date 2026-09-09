@@ -1,4 +1,4 @@
-﻿"""
+"""
 Audit Trail & Compliance Engine for MahaArogya-Agent.
 Provides immutable clinical audit logging for Medical Officer approvals,
 ASHA escalations, referral issuances, and DHO sign-offs as required by Govt health regulations.
@@ -69,17 +69,24 @@ class AuditLogger:
         self,
         limit: int = 50,
         action: Optional[ActionType] = None,
+        actor_role: Optional[str] = None,
         resource_id: Optional[str] = None
     ) -> List[AuditRecord]:
         results = self._records
         if action:
             results = [r for r in results if r.action == action]
+        if actor_role:
+            results = [r for r in results if r.actor_role.upper() == actor_role.strip().upper()]
         if resource_id:
             results = [r for r in results if resource_id.lower() in r.resource_id.lower()]
         return results[:limit]
 
     def total_records(self) -> int:
         return len(self._records)
+
+    def clear(self):
+        """Reset audit records for test isolation."""
+        self._records.clear()
 
 
 audit_logger = AuditLogger()
