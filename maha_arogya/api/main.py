@@ -1,12 +1,13 @@
 ﻿"""
 Production FastAPI Application for MahaArogya-Agent.
-Exposes endpoints for Vernacular Voice Intake, Closed-Loop Referral Tracking, and Epidemic Alerts.
+Exposes endpoints for Vernacular Voice Intake, Audio Uploads, Closed-Loop Referral Tracking, and Epidemic Alerts.
 """
 
 import json
 import uuid
+import base64
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -16,6 +17,7 @@ from maha_arogya.agents.graph import maha_arogya_graph, maha_arogya_hitl_graph
 from maha_arogya.agents.referral_agent import check_and_escalate_referral
 from maha_arogya.agents.surveillance_agent import detect_spatial_temporal_clusters, generate_dho_briefing
 from maha_arogya.mcp.server import check_stock_runway, REFERRAL_STORE, PATIENT_RECORDS
+from maha_arogya.services.voice_nlp import voice_nlp_service
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -57,7 +59,7 @@ class HITLApprovalRequest(BaseModel):
 
 
 # ==========================================
-# 1. ENDPOINT: /voice-intake
+# 1. ENDPOINTS: /voice-intake & /voice-intake/audio
 # ==========================================
 @app.post("/voice-intake", summary="Vernacular Voice Intake & Clinical Triage")
 async def voice_intake(payload: VoiceIntakeRequest):
@@ -107,6 +109,33 @@ async def voice_intake(payload: VoiceIntakeRequest):
             "total_entries": len(final_state.get("fhir_bundle", {}).get("entry", []))
         }
     }
+
+
+@app.post("/voice-intake/audio", summary="Direct Audio File Intake (WAV/MP3/M4A)")
+async def voice_intake_audio(
+    audio_file: UploadFile = File(..., description="Recorded audio file from ASHA worker"),
+    patient_id: Optional[str] = Form(None),
+    district: Optional[str] = Form("Pune"),
+    language: Optional[str] = Form("mr")
+):
+    """
+    Accepts raw audio file upload, transcribes Marathi/Hindi speech via Bhashini/Whisper STT,
+    and runs the full multi-agent triage and referral loop.
+    """
+    audio_bytes = await audio_file.read()
+    # Transcribe via Voice NLP Service
+    transcript = voice_nlp_service.transcribe_audio(audio_bytes, language=language)
+    
+    req = VoiceIntakeRequest(
+        patient_id=patient_id,
+        district=district,
+        voice_transcript=transcript,
+        language=language
+    )
+    res = await voice_intake(req)
+    res["audio_file_received"] = audio_file.filename
+    res["transcribed_text"] = transcript
+    return res
 
 
 # ==========================================
@@ -206,7 +235,7 @@ async def health():
 async def dashboard():
     return """
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="mr">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -223,13 +252,16 @@ async def dashboard():
             .badge-med { background-color: #fd7e14; color: white; }
             .badge-low { background-color: #198754; color: white; }
             .mono-box { font-family: monospace; background: #212529; color: #00ff66; padding: 15px; border-radius: 8px; font-size: 13px; max-height: 250px; overflow-y: auto; }
+            .btn-mic-recording { animation: pulse 1s infinite alternate; background-color: #dc3545 !important; color: white !important; }
+            @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+            .qr-display { background: white; padding: 10px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         </style>
     </head>
     <body>
         <nav class="navbar navbar-dark navbar-gov px-4 py-3">
             <div class="container-fluid">
                 <span class="navbar-brand fw-bold fs-4">
-                    <i class="bi bi-hospital me-2 text-danger"></i> MahaArogya-Agent
+                    <i class="bi bi-hospital me-2 text-danger"></i> महाआरोग्य-Agent (MahaArogya)
                     <small class="fs-6 text-warning d-block d-md-inline ms-md-2">SIH 2026 PS 133 | Govt of Maharashtra</small>
                 </span>
                 <div class="text-white small text-end">
@@ -241,24 +273,67 @@ async def dashboard():
 
         <div class="container-fluid px-4 py-4">
             <div class="row g-4">
-                <!-- Left Column: Voice Intake Simulation -->
+                <!-- Left Column: Voice Intake & Presets -->
                 <div class="col-lg-6">
                     <div class="card card-agent p-4 h-100">
-                        <h5 class="fw-bold text-dark"><i class="bi bi-mic-fill text-danger me-2"></i> 1. ASHA Vernacular Voice Copilot</h5>
-                        <p class="text-muted small">Input spoken Marathi or Hindi vitals and symptoms. Transcribes, structures into HL7 FHIR, and triages automatically.</p>
-                        
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-mic-fill text-danger me-2"></i> 1. ASHA Voice Copilot (आवाज नोंदणी)</h5>
+                            <span class="badge bg-danger-subtle text-danger border border-danger">मराठी / हिंदी / English</span>
+                        </div>
+                        <p class="text-muted small">
+                            Direct voice input via microphone or text. Converts speech to HL7 FHIR Observation/Condition, computes triage (LOW/MED/HIGH), and books specialist emergency care.
+                        </p>
+
+                        <!-- Preset Scenario Buttons -->
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Spoken Marathi / Hindi Transcript:</label>
+                            <label class="form-label small fw-semibold text-secondary">Quick Voice Clinical Presets:</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-sm btn-outline-danger" onclick="setPreset('preeclampsia')">
+                                    🚨 Preeclampsia High Risk (Marathi)
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="setPreset('fever')">
+                                    ⚠️ Acute Fever Tribal (Hindi)
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" onclick="setPreset('routine')">
+                                    ✅ Routine Antenatal (Marathi)
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Microphone Controls -->
+                        <div class="p-3 bg-light rounded border mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-bold text-dark"><i class="bi bi-record-circle me-1"></i> Live Microphone:</span>
+                                <select id="voiceLang" class="form-select form-select-sm w-auto">
+                                    <option value="mr-IN">Marathi (मराठी)</option>
+                                    <option value="hi-IN">Hindi (हिंदी)</option>
+                                    <option value="en-IN">English</option>
+                                </select>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button id="micBtn" class="btn btn-danger fw-bold flex-grow-1" onclick="toggleLiveMic()">
+                                    <i class="bi bi-mic-fill me-1"></i> Start Speaking (माईक सुरू करा)
+                                </button>
+                                <button id="speakAloudBtn" class="btn btn-outline-secondary" onclick="speakAloudOutput()" title="Read out vernacular response">
+                                    <i class="bi bi-volume-up-fill"></i> Read Aloud
+                                </button>
+                            </div>
+                            <small id="micStatus" class="text-muted d-block mt-2">Click button and speak your symptoms into the microphone.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Transcript (बोललेला मजकूर):</label>
                             <textarea id="voiceText" class="form-control" rows="3">रुग्ण आयडी PAT-4102, गरोदर माता ३२ आठवडे, बीपी १५०/९५, तीव्र डोकेदुखी आणि डोळ्यासमोर अंधारी, पायांवर सूज आहे.</textarea>
                         </div>
+
                         <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <label class="form-label small fw-semibold">District:</label>
                                 <select id="districtSelect" class="form-select form-select-sm">
-                                    <option value="Pune">Pune</option>
-                                    <option value="Nashik">Nashik</option>
-                                    <option value="Gadchiroli">Gadchiroli (Tribal)</option>
-                                    <option value="Thane">Thane</option>
+                                    <option value="Pune">Pune (पुणे)</option>
+                                    <option value="Nashik">Nashik (नाशिक)</option>
+                                    <option value="Gadchiroli">Gadchiroli (गडचिरोली Tribal)</option>
+                                    <option value="Thane">Thane (ठाणे)</option>
                                 </select>
                             </div>
                             <div class="col-6">
@@ -266,13 +341,25 @@ async def dashboard():
                                 <input type="text" id="phoneInput" class="form-control form-control-sm" value="+91-9822114477">
                             </div>
                         </div>
-                        <button class="btn btn-danger fw-bold" onclick="runVoiceIntake()">
-                            <i class="bi bi-play-fill"></i> Run Voice Intake & Triage
+
+                        <button class="btn btn-primary fw-bold w-100" onclick="runVoiceIntake()">
+                            <i class="bi bi-send-fill me-1"></i> Submit to Multi-Agent Engine (तपासणी सुरू करा)
                         </button>
 
                         <div id="triageResult" class="mt-4 d-none">
                             <h6 class="fw-bold"><i class="bi bi-clipboard-pulse text-primary me-1"></i> Triage Assessment Result:</h6>
                             <div class="alert alert-secondary p-3 small mb-2" id="triageSummary"></div>
+                            
+                            <!-- QR Code Visual Display -->
+                            <div id="qrContainer" class="text-center my-3 p-3 bg-white border rounded d-none">
+                                <h6 class="fw-bold text-success mb-2"><i class="bi bi-check-circle-fill"></i> Emergency Referral Pass Generated!</h6>
+                                <div class="qr-display mb-2">
+                                    <img id="qrImageElement" src="" alt="Referral QR Pass" width="160" height="160">
+                                </div>
+                                <div class="small fw-semibold text-dark" id="qrTokenDisplay"></div>
+                                <small class="text-muted d-block">Show this QR pass at the Civil Hospital Emergency Triage Desk</small>
+                            </div>
+
                             <div class="mono-box" id="triageJson"></div>
                         </div>
                     </div>
@@ -282,10 +369,10 @@ async def dashboard():
                 <div class="col-lg-6">
                     <div class="card card-agent p-4 mb-4">
                         <h5 class="fw-bold text-dark"><i class="bi bi-qr-code text-primary me-2"></i> 2. Closed-Loop Referral & 48h SLA Tracking</h5>
-                        <p class="text-muted small">Validates priority hospital bed slot, generates cryptographic QR pass, and escalates no-shows after 48 hours.</p>
+                        <p class="text-muted small">Tracks attendance at destination hospital. If no-show within 48h, auto-dispatches Marathi WhatsApp escalation to ASHA worker.</p>
                         
                         <div class="input-group mb-3">
-                            <input type="text" id="referralIdInput" class="form-control" placeholder="Enter Referral ID (e.g. REF-EC1FFD)">
+                            <input type="text" id="referralIdInput" class="form-control" placeholder="Enter Referral ID (e.g. REF-AA7BA4)">
                             <button class="btn btn-primary" onclick="checkReferral(false)"><i class="bi bi-search"></i> Check SLA</button>
                             <button class="btn btn-outline-danger" onclick="checkReferral(true)"><i class="bi bi-exclamation-triangle"></i> Simulate 48h Breach</button>
                         </div>
@@ -297,7 +384,7 @@ async def dashboard():
                             <h5 class="fw-bold text-dark mb-0"><i class="bi bi-shield-shaded text-success me-2"></i> 3. Surveillance Watchdog</h5>
                             <button class="btn btn-sm btn-outline-success" onclick="fetchEpidemicAlerts()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                         </div>
-                        <p class="text-muted small">Outbreak spatial-temporal clustering and medicine stock-out runway forecasts.</p>
+                        <p class="text-muted small">Spatial-temporal syndromic clustering & medicine stock-out runway forecasts (< 7 days).</p>
                         <div id="epidemicBox" class="mono-box">Click 'Refresh' to load real-time syndromic clusters and drug runways.</div>
                     </div>
                 </div>
@@ -305,6 +392,76 @@ async def dashboard():
         </div>
 
         <script>
+            let recognition = null;
+            let isRecording = false;
+            let lastMarathiResponse = "";
+
+            // Initialize Web Speech API for Browser Voice Input
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+
+                recognition.onstart = function() {
+                    isRecording = true;
+                    document.getElementById('micBtn').classList.add('btn-mic-recording');
+                    document.getElementById('micBtn').innerHTML = '<i class="bi bi-stop-circle-fill me-1"></i> Recording... Click to Stop';
+                    document.getElementById('micStatus').innerText = '🎤 Listening... Please speak your symptoms in Marathi/Hindi now!';
+                };
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('voiceText').value = transcript;
+                    document.getElementById('micStatus').innerText = '✅ Speech captured successfully! Now submitting to Multi-Agent Engine...';
+                    runVoiceIntake();
+                };
+
+                recognition.onerror = function(event) {
+                    document.getElementById('micStatus').innerText = '⚠️ Microphone error or permission denied: ' + event.error;
+                    stopMic();
+                };
+
+                recognition.onend = function() {
+                    stopMic();
+                };
+            }
+
+            function toggleLiveMic() {
+                if (!recognition) {
+                    alert('Web Speech API is not supported in this browser. Please type or use Chrome/Edge.');
+                    return;
+                }
+                if (isRecording) {
+                    recognition.stop();
+                    stopMic();
+                } else {
+                    const lang = document.getElementById('voiceLang').value;
+                    recognition.lang = lang;
+                    recognition.start();
+                }
+            }
+
+            function stopMic() {
+                isRecording = false;
+                document.getElementById('micBtn').classList.remove('btn-mic-recording');
+                document.getElementById('micBtn').innerHTML = '<i class="bi bi-mic-fill me-1"></i> Start Speaking (माईक सुरू करा)';
+            }
+
+            function setPreset(type) {
+                if (type === 'preeclampsia') {
+                    document.getElementById('voiceText').value = 'रुग्ण आयडी PAT-4102, गरोदर माता ३२ आठवडे, बीपी १५०/९५, तीव्र डोकेदुखी आणि डोळ्यासमोर अंधारी, पायांवर सूज आहे.';
+                    document.getElementById('districtSelect').value = 'Pune';
+                } else if (type === 'fever') {
+                    document.getElementById('voiceText').value = 'मरीज आईडी PAT-3301, तेज बुखार, सिरदर्द, ठंड लगकर कंपकंपी, उल्टी हो रही है.';
+                    document.getElementById('districtSelect').value = 'Gadchiroli';
+                } else if (type === 'routine') {
+                    document.getElementById('voiceText').value = 'रुग्ण आयडी PAT-1050, नियमित गरोदर तपासणी, २० आठवडे, बीपी ११८/७८, सर्व काही व्यवस्थित आहे.';
+                    document.getElementById('districtSelect').value = 'Nashik';
+                }
+                runVoiceIntake();
+            }
+
             async function runVoiceIntake() {
                 const text = document.getElementById('voiceText').value;
                 const district = document.getElementById('districtSelect').value;
@@ -324,10 +481,33 @@ async def dashboard():
                     <strong>Rationale:</strong> ${data.triage_rationale}<br>
                     ${data.referral_details ? `<strong>Referral ID:</strong> <span class="badge bg-primary">${data.referral_details.referral_id}</span> | <strong>QR Token:</strong> <code>${data.referral_details.qr_token}</code><br><strong>Hospital:</strong> ${data.referral_details.hospital_name}` : ''}
                 `;
-                document.getElementById('triageJson').innerText = JSON.stringify(data, null, 2);
-                if (data.referral_details) {
+                
+                // Show QR code if generated
+                if (data.referral_details && data.referral_details.qr_image_base64) {
+                    document.getElementById('qrContainer').classList.remove('d-none');
+                    document.getElementById('qrImageElement').src = 'data:image/png;base64,' + data.referral_details.qr_image_base64;
+                    document.getElementById('qrTokenDisplay').innerText = data.referral_details.qr_token;
                     document.getElementById('referralIdInput').value = data.referral_details.referral_id;
+                } else {
+                    document.getElementById('qrContainer').classList.add('d-none');
                 }
+
+                document.getElementById('triageJson').innerText = JSON.stringify(data, null, 2);
+                lastMarathiResponse = data.vernacular_message || data.triage_rationale;
+            }
+
+            function speakAloudOutput() {
+                if (!window.speechSynthesis) {
+                    alert('Text to speech is not supported in this browser.');
+                    return;
+                }
+                if (!lastMarathiResponse) {
+                    alert('Please run a voice intake first.');
+                    return;
+                }
+                const utterance = new SpeechSynthesisUtterance(lastMarathiResponse);
+                utterance.lang = 'mr-IN';
+                window.speechSynthesis.speak(utterance);
             }
 
             async function checkReferral(forceBreach) {
