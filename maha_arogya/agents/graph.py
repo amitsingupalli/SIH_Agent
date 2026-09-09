@@ -1,4 +1,4 @@
-﻿"""
+"""
 LangGraph Multi-Agent Orchestration Graph.
 Connects ASHA Voice Copilot, Closed-Loop Referral Agent, and Surveillance Watchdog
 with conditional routing, MemorySaver checkpointing, and Human-in-the-Loop (HITL) clinical guardrails.
@@ -80,6 +80,59 @@ def hitl_clinician_approval_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
+from maha_arogya.guardrails.safety import safety_guardrails
+
+
+def safety_guardrail_node(state: AgentState) -> Dict[str, Any]:
+    """
+    First-line Safety & Ethical Gatekeeper Node.
+    Filters adversarial prompts, redacts DPDP PII, intercepts crisis emergencies (poisoning, self-harm),
+    and attaches statutory clinical disclaimers.
+    """
+    raw_input = state.get("raw_input", "")
+    lang = state.get("detected_language", "en")
+    
+    evaluation = safety_guardrails.evaluate_clinical_and_ethical_safety(raw_input, language=lang)
+    
+    if evaluation.is_blocked:
+        # Construct emergency safety response
+        crisis_message = (
+            f"⛔ SAFETY GUARDRAIL INTERCEPT: {'; '.join(evaluation.violations)}\n\n"
+            f"If you or someone you know is facing a critical emergency, poisoning, or mental health crisis, "
+            f"please immediately contact:\n"
+            f"• National Mental Health Helpline (Tele-MANAS): 14416 / 1800-599-0019\n"
+            f"• Maharashtra Emergency Ambulance Service: 108\n"
+            f"• National Emergency Helpline: 112"
+        )
+        return {
+            "guardrail_passed": False,
+            "guardrail_blocked": True,
+            "guardrail_violations": evaluation.violations,
+            "statutory_disclaimer": evaluation.statutory_disclaimer,
+            "current_stage": "GUARDRAIL_BLOCKED",
+            "triage_level": "HIGH",
+            "triage_rationale": crisis_message,
+            "requires_referral": False,
+            "messages": [{"role": "assistant", "name": "Safety_Guardrail_Engine", "content": crisis_message}]
+        }
+        
+    return {
+        "guardrail_passed": True,
+        "guardrail_blocked": False,
+        "guardrail_violations": [],
+        "raw_input": evaluation.sanitized_text,
+        "statutory_disclaimer": evaluation.statutory_disclaimer,
+        "current_stage": "GUARDRAIL_PASSED"
+    }
+
+
+def route_after_safety(state: AgentState) -> Literal["asha_voice_copilot", "__end__"]:
+    """Routes based on whether input passed ethics & safety guardrails."""
+    if state.get("guardrail_blocked", False):
+        return "__end__"
+    return "asha_voice_copilot"
+
+
 # Conditional Edge Router
 def route_after_triage(state: AgentState) -> Literal["hitl_clinician_approval", "routine_advisory"]:
     """Routes based on clinical triage level."""
@@ -98,22 +151,32 @@ def route_after_hitl(state: AgentState) -> Literal["closed_loop_referral", "rout
 
 def build_maha_arogya_graph(enable_hitl_interrupt: bool = False):
     """
-    Assembles and compiles the full LangGraph StateGraph.
-    Optionally enables HITL interrupt_before on the approval node for interactive clinician pauses.
+    Assembles and compiles the full LangGraph StateGraph with Safety Guardrails.
+    Flow: Safety Guardrail -> ASHA Voice Copilot -> Triage -> HITL Gatekeeper -> Referral -> Surveillance.
     """
     builder = StateGraph(AgentState)
     
     # 1. Register Nodes
+    builder.add_node("safety_guardrail", safety_guardrail_node)
     builder.add_node("asha_voice_copilot", asha_voice_copilot_node)
     builder.add_node("hitl_clinician_approval", hitl_clinician_approval_node)
     builder.add_node("closed_loop_referral", closed_loop_referral_node)
     builder.add_node("routine_advisory", routine_advisory_node)
     builder.add_node("surveillance_watchdog", surveillance_watchdog_node)
     
-    # 2. Set Entry Point
-    builder.set_entry_point("asha_voice_copilot")
+    # 2. Set Entry Point to Safety Guardrail
+    builder.set_entry_point("safety_guardrail")
     
     # 3. Add Conditional Routing
+    builder.add_conditional_edges(
+        "safety_guardrail",
+        route_after_safety,
+        {
+            "asha_voice_copilot": "asha_voice_copilot",
+            "__end__": END
+        }
+    )
+    
     builder.add_conditional_edges(
         "asha_voice_copilot",
         route_after_triage,
