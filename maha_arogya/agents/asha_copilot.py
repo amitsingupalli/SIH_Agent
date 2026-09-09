@@ -1,4 +1,4 @@
-﻿"""
+"""
 ASHA Voice Copilot Agent Node.
 Handles vernacular Marathi/Hindi voice input, clinical entity extraction,
 HL7 FHIR bundle generation via FastMCP log_vitals, and clinical triage decisioning.
@@ -9,6 +9,8 @@ from typing import Dict, Any, Literal
 from maha_arogya.agents.state import AgentState
 from maha_arogya.services.voice_nlp import voice_nlp_service
 from maha_arogya.mcp.server import log_vitals
+from maha_arogya.core.audit import audit_logger, ActionType
+from maha_arogya.agents.surveillance_agent import record_syndromic_case
 
 
 def evaluate_clinical_triage(
@@ -124,6 +126,43 @@ def asha_voice_copilot_node(state: AgentState) -> Dict[str, Any]:
     
     requires_referral = (triage_level == "HIGH")
     hitl_pending = (triage_level == "HIGH")
+
+    # 5. Cross-Agent Linkage: Stream clinical symptoms to Surveillance Watchdog
+    if extracted.standardized_symptoms:
+        for sym in extracted.standardized_symptoms:
+            record_syndromic_case(
+                phc_id=phc_id,
+                district=district,
+                taluka="Block-1",
+                syndrome=sym,
+                patient_id=patient_id
+            )
+    elif triage_level == "HIGH":
+        record_syndromic_case(
+            phc_id=phc_id,
+            district=district,
+            taluka="Block-1",
+            syndrome="Maternal Gestational Hypertension / Preeclampsia",
+            patient_id=patient_id
+        )
+
+    # 6. Immutable Clinical Audit Log
+    audit_logger.log(
+        action=ActionType.VOICE_INTAKE_LOGGED,
+        actor_id=state.get("auth_user_id", "ASHA-VOICE-AGENT"),
+        actor_role=state.get("auth_role", "ASHA_WORKER"),
+        resource_id=patient_id,
+        decision=triage_level,
+        clinical_rationale=rationale,
+        metadata={
+            "bp": bp_str,
+            "gestation": extracted.gestation_weeks,
+            "requires_referral": requires_referral,
+            "specialty": specialty,
+            "district": district,
+            "phc_id": phc_id
+        }
+    )
     
     message_entry = {
         "role": "assistant",
