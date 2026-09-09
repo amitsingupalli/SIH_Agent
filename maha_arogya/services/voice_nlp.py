@@ -1,4 +1,4 @@
-﻿"""
+"""
 Vernacular Voice and NLP Service for ASHA Workers.
 Integrates with Bhashini API / Whisper for Marathi, Hindi, and English speech recognition,
 Devanagari normalization, clinical entity extraction, and vernacular SMS generation.
@@ -39,12 +39,25 @@ CLINICAL_SYMPTOMS_MAP = {
     "\u092a\u094b\u091f\u0926\u0941\u0916\u0940": {"term": "Abdominal Pain", "snomed": "21522000", "red_flag": False},
 
     # Hindi Terms
+    "\u0924\u0947\u091c \u0938\u093f\u0930\u0926\u0930\u094d\u0926": {"term": "Severe Headache", "snomed": "248536006", "red_flag": True},
     "\u0938\u093f\u0930\u0926\u0930\u094d\u0926": {"term": "Severe Headache", "snomed": "248536006", "red_flag": True},
     "\u091a\u0915\u094d\u0915\u0930 \u0906\u0928\u093e": {"term": "Dizziness / Vertigo", "snomed": "404640003", "red_flag": True},
+    "\u091a\u0915\u094d\u0915\u0930": {"term": "Dizziness / Vertigo", "snomed": "404640003", "red_flag": True},
     "\u0927\u0941\u0902\u0927\u0932\u093e \u0926\u093f\u0916\u0928\u093e": {"term": "Blurred Vision", "snomed": "246636008", "red_flag": True},
+    "\u091a\u0947\u0939\u0930\u0947 \u092a\u0930 \u0938\u0942\u091c\u0928": {"term": "Peripheral Edema (Face/Hands)", "snomed": "267038008", "red_flag": True},
     "\u0938\u0942\u091c\u0928": {"term": "Edema", "snomed": "267038008", "red_flag": True},
     "\u092c\u0941\u0916\u093e\u0930": {"term": "Fever / Pyrexia", "snomed": "386661006", "red_flag": False},
     "\u0916\u0942\u0928 \u0906\u0928\u093e": {"term": "Bleeding", "snomed": "289530006", "red_flag": True},
+    "\u0916\u0942\u0928 \u092c\u0939\u0928\u093e": {"term": "Bleeding", "snomed": "289530006", "red_flag": True},
+    "\u092c\u094d\u0932\u0940\u0921\u093f\u0902\u0917": {"term": "Bleeding", "snomed": "289530006", "red_flag": True},
+    "bleeding": {"term": "Vaginal Bleeding", "snomed": "289530006", "red_flag": True},
+    "\u0938\u093e\u0902\u0938 \u092b\u0942\u0932\u0928\u093e": {"term": "Dyspnea / Breathlessness", "snomed": "267036009", "red_flag": True},
+    "\u0938\u093e\u0902\u0938 \u0932\u0947\u0928\u0947 \u092e\u0947\u0902 \u0924\u0915\u0932\u0940\u092b": {"term": "Dyspnea / Breathlessness", "snomed": "267036009", "red_flag": True},
+    "\u0909\u0932\u094d\u091f\u0940": {"term": "Vomiting", "snomed": "422400008", "red_flag": False},
+    "\u091c\u0940 \u092e\u093f\u091a\u0932\u093e\u0928\u093e": {"term": "Nausea", "snomed": "422587007", "red_flag": False},
+    "\u092a\u0947\u091f \u0926\u0930\u094d\u0926": {"term": "Abdominal Pain", "snomed": "21522000", "red_flag": False},
+    "\u091d\u091f\u0915\u0947": {"term": "Eclamptic Seizures", "snomed": "91175000", "red_flag": True},
+    "\u0926\u094c\u0930\u0947": {"term": "Eclamptic Seizures", "snomed": "91175000", "red_flag": True},
 
     # English Terms
     "severe headache": {"term": "Severe Headache", "snomed": "248536006", "red_flag": True},
