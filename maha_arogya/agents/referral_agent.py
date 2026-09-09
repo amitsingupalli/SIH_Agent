@@ -1,4 +1,4 @@
-﻿"""
+"""
 Closed Loop Referral Agent Node.
 Matches hospital capacity, books priority emergency slot, issues cryptographic QR referral pass,
 tracks 48-hour attendance SLA, and automatically triggers vernacular WhatsApp/SMS alerts and escalation.
@@ -17,6 +17,8 @@ from maha_arogya.mcp.server import (
     REFERRAL_STORE
 )
 from maha_arogya.services.voice_nlp import voice_nlp_service
+from maha_arogya.core.audit import audit_logger, ActionType
+from maha_arogya.core.reliability import retry_with_backoff, dead_letter_queue
 
 
 def closed_loop_referral_node(state: AgentState) -> Dict[str, Any]:
@@ -68,9 +70,42 @@ def closed_loop_referral_node(state: AgentState) -> Dict[str, Any]:
         urgency="तातडीची प्रसूती पूर्व संदर्भ (STAT / High Risk)", language=state.get("detected_language", "mr")
     )
     
-    # 5. Dispatch vernacular alert via FastMCP tool
-    alert_status_json = send_vernacular_alert(phone=phone, msg_marathi=marathi_sms)
-    alert_status = json.loads(alert_status_json)
+    # 5. Dispatch vernacular alert via FastMCP tool with retry and DLQ fallback
+    try:
+        @retry_with_backoff(max_attempts=3, initial_delay=0.1, backoff_factor=1.5)
+        def _dispatch_with_retry():
+            return send_vernacular_alert(phone=phone, msg_marathi=marathi_sms)
+        
+        alert_status_json = _dispatch_with_retry()
+        alert_status = json.loads(alert_status_json)
+        alert_dispatched = True
+    except Exception as err:
+        dead_letter_queue.enqueue(
+            event_type="REFERRAL_SMS_DISPATCH",
+            payload={"patient_id": patient_id, "referral_id": referral_id, "sms_text": marathi_sms},
+            error_reason=str(err),
+            recipient=phone,
+            patient_id=patient_id
+        )
+        alert_status = {"status": "QUEUED_TO_DLQ", "reason": str(err)}
+        alert_dispatched = False
+
+    # 6. Immutable Clinical Audit Log for Referral Booking
+    audit_logger.log(
+        action=ActionType.REFERRAL_BOOKED,
+        actor_id=state.get("auth_user_id", "REFERRAL-AGENT"),
+        actor_role=state.get("auth_role", "SYSTEM_AGENT"),
+        resource_id=referral_id,
+        decision="BOOKED",
+        clinical_rationale=f"High-risk emergency referral matched and booked at {hospital_name}",
+        metadata={
+            "patient_id": patient_id,
+            "hospital_id": hospital_id,
+            "specialty": specialty,
+            "qr_token": qr_token,
+            "sla_deadline": sla_expires_at
+        }
+    )
     
     message_entry = {
         "role": "assistant",
@@ -149,7 +184,30 @@ def check_and_escalate_referral(referral_id: str, force_sla_breach: bool = False
         )
         
         asha_phone = "+91-9422009988"  # ASHA supervisor phone
-        alert_dispatch = send_vernacular_alert(phone=asha_phone, msg_marathi=escalation_sms)
+        try:
+            @retry_with_backoff(max_attempts=3, initial_delay=0.1, backoff_factor=1.5)
+            def _dispatch_escalation():
+                return send_vernacular_alert(phone=asha_phone, msg_marathi=escalation_sms)
+            alert_dispatch = _dispatch_escalation()
+        except Exception as err:
+            dead_letter_queue.enqueue(
+                event_type="SLA_BREACH_ESCALATION_SMS",
+                payload={"patient_id": patient_id, "referral_id": referral_id, "sms": escalation_sms},
+                error_reason=str(err),
+                recipient=asha_phone,
+                patient_id=patient_id
+            )
+
+        # Record SLA Breach Escalation Audit Log
+        audit_logger.log(
+            action=ActionType.SLA_BREACH_ESCALATED,
+            actor_id="REFERRAL-WATCHDOG",
+            actor_role="SYSTEM_AGENT",
+            resource_id=referral_id,
+            decision="ESCALATED",
+            clinical_rationale=f"Patient {patient_id} breached 48h SLA without attendance at {hosp_name}",
+            metadata={"patient_id": patient_id, "hospital": hosp_name, "asha_notified": asha_phone}
+        )
         
         return {
             "referral_id": referral_id,
