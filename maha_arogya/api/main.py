@@ -89,12 +89,15 @@ async def voice_intake(
         idempotency_guard.acquire(x_idempotency_key)
 
     # 2. Role Verification (Optional in demo mode, enforced when header supplied)
-    auth_user = {"user_id": "ASHA-PORTAL", "role": "ASHA_WORKER"}
+    auth_user_id = "ASHA-PORTAL"
+    auth_role_name = "ASHA_WORKER"
     if x_api_key:
-        auth_user = verify_role_api_key(
+        auth_obj = verify_role_api_key(
             x_api_key,
             [UserRole.ASHA_WORKER, UserRole.PHC_DOCTOR, UserRole.STATE_ADMIN, UserRole.DHO_OFFICER]
         )
+        auth_user_id = auth_obj.user_id
+        auth_role_name = auth_obj.role.value
 
     thread_id = f"session-{uuid.uuid4().hex[:8]}"
     config = {"configurable": {"thread_id": thread_id}}
@@ -106,8 +109,8 @@ async def voice_intake(
         "phc_id": payload.phc_id,
         "raw_input": payload.voice_transcript,
         "detected_language": payload.language or "mr",
-        "auth_user_id": auth_user["user_id"],
-        "auth_role": auth_user["role"]
+        "auth_user_id": auth_user_id,
+        "auth_role": auth_role_name
     }
     
     try:
