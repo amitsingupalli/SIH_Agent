@@ -1,4 +1,4 @@
-﻿"""
+"""
 LangGraph AgentState Definition for MahaArogya-Agent.
 Manages context across ASHA Voice Copilot, Closed-Loop Referral Agent, and Surveillance Watchdog.
 """
@@ -57,6 +57,13 @@ class AgentState(TypedDict, total=False):
     # Surveillance Watchdog Signals
     surveillance_signals: Optional[Dict[str, Any]]
     stock_runway_report: Optional[Dict[str, Any]]
+    
+    # Ethics, Safety & Guardrail Context
+    guardrail_passed: bool
+    guardrail_blocked: bool
+    guardrail_violations: List[str]
+    statutory_disclaimer: str
+    vitals_safety_status: Optional[Dict[str, Any]]
     
     # Operational Stage Tracking
     current_stage: str
