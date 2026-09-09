@@ -324,8 +324,13 @@ async def dashboard():
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Transcript (बोललेला मजकूर):</label>
-                            <textarea id="voiceText" class="form-control" rows="3">रुग्ण आयडी PAT-4102, गरोदर माता ३२ आठवडे, बीपी १५०/९५, तीव्र डोकेदुखी आणि डोळ्यासमोर अंधारी, पायांवर सूज आहे.</textarea>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-semibold mb-0">Transcript (Spoken Input / बोललेला मजकूर):</label>
+                                <button class="btn btn-sm btn-link text-decoration-none py-0 text-secondary" onclick="document.getElementById('voiceText').value = '';" title="Clear text">
+                                    <i class="bi bi-x-circle me-1"></i> Clear (पुसा)
+                                </button>
+                            </div>
+                            <textarea id="voiceText" class="form-control" rows="3" placeholder="Speak into the microphone above or select a preset scenario... (येथे थेट आवाजाद्वारे नोंदणी होईल)"></textarea>
                         </div>
 
                         <div class="row g-2 mb-3">
@@ -491,9 +496,6 @@ async def dashboard():
                 }
 
                 renderPresets();
-                const first = PRESETS[lang][0];
-                document.getElementById('voiceText').value = first.text;
-                document.getElementById('districtSelect').value = first.district;
             }
 
             function syncVoiceLanguage() {
@@ -528,7 +530,11 @@ async def dashboard():
             }
 
             async function runVoiceIntake() {
-                const text = document.getElementById('voiceText').value;
+                const text = document.getElementById('voiceText').value.trim();
+                if (!text) {
+                    alert('Please speak into the microphone (or select a preset scenario) before submitting.');
+                    return;
+                }
                 const district = document.getElementById('districtSelect').value;
                 const phone = document.getElementById('phoneInput').value;
                 const voiceLangVal = document.getElementById('voiceLang').value;
