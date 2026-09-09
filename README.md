@@ -164,4 +164,4 @@ curl "http://127.0.0.1:8000/epidemic-alerts"
 ---
 
 ## 👥 Contributors & SIH 2026 Team
-- **Amit Singupalli** ([@amitsingupalli](https://github.com/amitsingupalli)) - Senior Agentic AI & Systems Engineer
+- **Amit Singupalli** ([@amitsingupalli](https://github.com/amitsingupalli)) - Agentic AI & Systems Engineer
