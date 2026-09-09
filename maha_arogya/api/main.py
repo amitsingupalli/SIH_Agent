@@ -1,4 +1,4 @@
-﻿"""
+"""
 Production FastAPI Application for MahaArogya-Agent.
 Exposes endpoints for Vernacular Voice Intake, Audio Uploads, Closed-Loop Referral Tracking, and Epidemic Alerts.
 """
@@ -277,42 +277,44 @@ async def dashboard():
                 <div class="col-lg-6">
                     <div class="card card-agent p-4 h-100">
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-mic-fill text-danger me-2"></i> 1. ASHA Voice Copilot (आवाज नोंदणी)</h5>
-                            <span class="badge bg-danger-subtle text-danger border border-danger">मराठी / हिंदी / English</span>
+                            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-mic-fill text-danger me-2"></i> 1. ASHA Voice Copilot (Voice / आवाज नोंदणी)</h5>
+                            <span class="badge bg-primary-subtle text-primary border border-primary">English / मराठी / हिंदी</span>
                         </div>
                         <p class="text-muted small">
                             Direct voice input via microphone or text. Converts speech to HL7 FHIR Observation/Condition, computes triage (LOW/MED/HIGH), and books specialist emergency care.
                         </p>
 
-                        <!-- Preset Scenario Buttons -->
+                        <!-- Language Tab Selector for Presets -->
                         <div class="mb-3">
-                            <label class="form-label small fw-semibold text-secondary">Quick Voice Clinical Presets:</label>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-sm btn-outline-danger" onclick="setPreset('preeclampsia')">
-                                    🚨 Preeclampsia High Risk (Marathi)
-                                </button>
-                                <button class="btn btn-sm btn-outline-warning" onclick="setPreset('fever')">
-                                    ⚠️ Acute Fever Tribal (Hindi)
-                                </button>
-                                <button class="btn btn-sm btn-outline-success" onclick="setPreset('routine')">
-                                    ✅ Routine Antenatal (Marathi)
-                                </button>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label small fw-semibold text-secondary mb-0">Clinical Presets (Language):</label>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button class="btn btn-sm btn-primary fw-bold" id="btnTabEn" onclick="switchPresetLang('en')">English</button>
+                                    <button class="btn btn-sm btn-outline-danger" id="btnTabMr" onclick="switchPresetLang('mr')">मराठी (Marathi)</button>
+                                    <button class="btn btn-sm btn-outline-warning text-dark" id="btnTabHi" onclick="switchPresetLang('hi')">हिंदी (Hindi)</button>
+                                </div>
+                            </div>
+                            <!-- Preset Buttons Container -->
+                            <div id="presetsContainer" class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-sm btn-outline-danger" onclick="setPreset('preeclampsia_en')">🚨 Severe Preeclampsia (English)</button>
+                                <button class="btn btn-sm btn-outline-warning text-dark" onclick="setPreset('fever_en')">⚠️ High Fever / Malaria (English)</button>
+                                <button class="btn btn-sm btn-outline-success" onclick="setPreset('routine_en')">✅ Normal Antenatal (English)</button>
                             </div>
                         </div>
 
                         <!-- Live Microphone Controls -->
                         <div class="p-3 bg-light rounded border mb-3">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="fw-bold text-dark"><i class="bi bi-record-circle me-1"></i> Live Microphone:</span>
-                                <select id="voiceLang" class="form-select form-select-sm w-auto">
+                                <span class="fw-bold text-dark"><i class="bi bi-record-circle me-1"></i> Live Microphone Recording:</span>
+                                <select id="voiceLang" class="form-select form-select-sm w-auto" onchange="syncVoiceLanguage()">
+                                    <option value="en-US" selected>English (India / Global)</option>
                                     <option value="mr-IN">Marathi (मराठी)</option>
                                     <option value="hi-IN">Hindi (हिंदी)</option>
-                                    <option value="en-IN">English</option>
                                 </select>
                             </div>
                             <div class="d-flex gap-2">
                                 <button id="micBtn" class="btn btn-danger fw-bold flex-grow-1" onclick="toggleLiveMic()">
-                                    <i class="bi bi-mic-fill me-1"></i> Start Speaking (माईक सुरू करा)
+                                    <i class="bi bi-mic-fill me-1"></i> Start Speaking (Microphone)
                                 </button>
                                 <button id="speakAloudBtn" class="btn btn-outline-secondary" onclick="speakAloudOutput()" title="Read out vernacular response">
                                     <i class="bi bi-volume-up-fill"></i> Read Aloud
@@ -445,20 +447,83 @@ async def dashboard():
             function stopMic() {
                 isRecording = false;
                 document.getElementById('micBtn').classList.remove('btn-mic-recording');
-                document.getElementById('micBtn').innerHTML = '<i class="bi bi-mic-fill me-1"></i> Start Speaking (माईक सुरू करा)';
+                document.getElementById('micBtn').innerHTML = '<i class="bi bi-mic-fill me-1"></i> Start Speaking (Microphone)';
+            }
+
+            const PRESETS = {
+                en: [
+                    { title: "🚨 Severe Preeclampsia (English)", class: "btn-outline-danger", text: "Patient ID PAT-4102, 32 weeks pregnant, blood pressure 150/95, severe headache, blurred vision, and swelling in face and hands.", district: "Pune" },
+                    { title: "⚠️ High Fever / Malaria (English)", class: "btn-outline-warning text-dark", text: "Patient ID PAT-3301, acute high fever with chills, body ache, nausea, and vomiting.", district: "Gadchiroli" },
+                    { title: "✅ Normal Antenatal (English)", class: "btn-outline-success", text: "Patient ID PAT-1050, routine antenatal checkup, 24 weeks pregnant, blood pressure 118/76, fetal movement normal, feeling healthy.", district: "Nashik" }
+                ],
+                mr: [
+                    { title: "🚨 प्री-एक्लॅम्पसिया तातडी (मराठी)", class: "btn-outline-danger", text: "रुग्ण आयडी PAT-4102, गरोदर माता ३२ आठवडे, बीपी १५०/९५, तीव्र डोकेदुखी आणि डोळ्यासमोर अंधारी, पायांवर सूज आहे.", district: "Pune" },
+                    { title: "⚠️ तीव्र ताप / हिवताप (मराठी)", class: "btn-outline-warning text-dark", text: "रुग्ण आयडी PAT-3301, अंगात तीव्र ताप, थंडी वाजून येणे, मळमळ आणि उलट्या होत आहेत.", district: "Gadchiroli" },
+                    { title: "✅ नियमित तपासणी (मराठी)", class: "btn-outline-success", text: "रुग्ण आयडी PAT-1050, नियमित गरोदर तपासणी, २० आठवडे, बीपी ११८/७८, सर्व काही व्यवस्थित आहे.", district: "Nashik" }
+                ],
+                hi: [
+                    { title: "🚨 प्री-एक्लेम्पसिया आपातकाल (हिंदी)", class: "btn-outline-danger", text: "मरीज आईडी PAT-4102, 32 हफ्ते की गर्भवती, बीपी 150/95, तेज सिरदर्द, धुंधला दिखना और चेहरे पर सूजन है.", district: "Pune" },
+                    { title: "⚠️ तेज बुखार / मलेरिया (हिंदी)", class: "btn-outline-warning text-dark", text: "मरीज आईडी PAT-3301, तेज बुखार, ठंड लगना, उल्टी और चक्कर आना.", district: "Gadchiroli" },
+                    { title: "✅ सामान्य जांच (हिंदी)", class: "btn-outline-success", text: "मरीज आईडी PAT-1050, सामान्य गर्भावस्था जांच, बीपी 118/78, सब सामान्य है.", district: "Nashik" }
+                ]
+            };
+
+            let currentLangCode = "en";
+
+            function switchPresetLang(lang) {
+                currentLangCode = lang;
+                const selectElem = document.getElementById('voiceLang');
+                if (lang === 'en') {
+                    selectElem.value = 'en-US';
+                    document.getElementById('btnTabEn').className = 'btn btn-sm btn-primary fw-bold';
+                    document.getElementById('btnTabMr').className = 'btn btn-sm btn-outline-danger';
+                    document.getElementById('btnTabHi').className = 'btn btn-sm btn-outline-warning text-dark';
+                } else if (lang === 'mr') {
+                    selectElem.value = 'mr-IN';
+                    document.getElementById('btnTabEn').className = 'btn btn-sm btn-outline-primary';
+                    document.getElementById('btnTabMr').className = 'btn btn-sm btn-danger fw-bold';
+                    document.getElementById('btnTabHi').className = 'btn btn-sm btn-outline-warning text-dark';
+                } else if (lang === 'hi') {
+                    selectElem.value = 'hi-IN';
+                    document.getElementById('btnTabEn').className = 'btn btn-sm btn-outline-primary';
+                    document.getElementById('btnTabMr').className = 'btn btn-sm btn-outline-danger';
+                    document.getElementById('btnTabHi').className = 'btn btn-sm btn-warning fw-bold text-dark';
+                }
+
+                renderPresets();
+                const first = PRESETS[lang][0];
+                document.getElementById('voiceText').value = first.text;
+                document.getElementById('districtSelect').value = first.district;
+            }
+
+            function syncVoiceLanguage() {
+                const val = document.getElementById('voiceLang').value;
+                if (val.startsWith('en')) switchPresetLang('en');
+                else if (val.startsWith('mr')) switchPresetLang('mr');
+                else if (val.startsWith('hi')) switchPresetLang('hi');
+            }
+
+            function renderPresets() {
+                const container = document.getElementById('presetsContainer');
+                container.innerHTML = '';
+                const items = PRESETS[currentLangCode] || PRESETS.en;
+                items.forEach((item) => {
+                    const btn = document.createElement('button');
+                    btn.className = `btn btn-sm ${item.class}`;
+                    btn.innerText = item.title;
+                    btn.onclick = () => {
+                        document.getElementById('voiceText').value = item.text;
+                        document.getElementById('districtSelect').value = item.district;
+                        runVoiceIntake();
+                    };
+                    container.appendChild(btn);
+                });
             }
 
             function setPreset(type) {
-                if (type === 'preeclampsia') {
-                    document.getElementById('voiceText').value = 'रुग्ण आयडी PAT-4102, गरोदर माता ३२ आठवडे, बीपी १५०/९५, तीव्र डोकेदुखी आणि डोळ्यासमोर अंधारी, पायांवर सूज आहे.';
-                    document.getElementById('districtSelect').value = 'Pune';
-                } else if (type === 'fever') {
-                    document.getElementById('voiceText').value = 'मरीज आईडी PAT-3301, तेज बुखार, सिरदर्द, ठंड लगकर कंपकंपी, उल्टी हो रही है.';
-                    document.getElementById('districtSelect').value = 'Gadchiroli';
-                } else if (type === 'routine') {
-                    document.getElementById('voiceText').value = 'रुग्ण आयडी PAT-1050, नियमित गरोदर तपासणी, २० आठवडे, बीपी ११८/७८, सर्व काही व्यवस्थित आहे.';
-                    document.getElementById('districtSelect').value = 'Nashik';
-                }
+                if (type.endsWith('_en')) switchPresetLang('en');
+                else if (type.endsWith('_hi')) switchPresetLang('hi');
+                else switchPresetLang('mr');
                 runVoiceIntake();
             }
 
@@ -466,19 +531,22 @@ async def dashboard():
                 const text = document.getElementById('voiceText').value;
                 const district = document.getElementById('districtSelect').value;
                 const phone = document.getElementById('phoneInput').value;
+                const voiceLangVal = document.getElementById('voiceLang').value;
+                const langCode = voiceLangVal.startsWith('en') ? 'en' : (voiceLangVal.startsWith('hi') ? 'hi' : 'mr');
                 
                 const res = await fetch('/voice-intake', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({voice_transcript: text, district: district, phone: phone})
+                    body: JSON.stringify({voice_transcript: text, district: district, phone: phone, language: langCode})
                 });
                 const data = await res.json();
                 
                 document.getElementById('triageResult').classList.remove('d-none');
                 document.getElementById('triageSummary').innerHTML = `
                     <strong>Patient:</strong> ${data.patient_id} | 
+                    <strong>Language:</strong> <span class="badge bg-secondary">${data.detected_language ? data.detected_language.toUpperCase() : 'AUTO'}</span> |
                     <strong>Triage:</strong> <span class="badge ${data.triage_level === 'HIGH' ? 'badge-high' : 'badge-low'}">${data.triage_level}</span><br>
-                    <strong>Rationale:</strong> ${data.triage_rationale}<br>
+                    <strong>Clinical Assessment:</strong> ${data.triage_rationale}<br>
                     ${data.referral_details ? `<strong>Referral ID:</strong> <span class="badge bg-primary">${data.referral_details.referral_id}</span> | <strong>QR Token:</strong> <code>${data.referral_details.qr_token}</code><br><strong>Hospital:</strong> ${data.referral_details.hospital_name}` : ''}
                 `;
                 
@@ -506,7 +574,8 @@ async def dashboard():
                     return;
                 }
                 const utterance = new SpeechSynthesisUtterance(lastMarathiResponse);
-                utterance.lang = 'mr-IN';
+                const voiceLangVal = document.getElementById('voiceLang').value;
+                utterance.lang = voiceLangVal || 'en-US';
                 window.speechSynthesis.speak(utterance);
             }
 
@@ -526,7 +595,10 @@ async def dashboard():
                 document.getElementById('epidemicBox').innerText = data.dho_briefing_text;
             }
 
-            window.onload = fetchEpidemicAlerts;
+            window.onload = function() {
+                renderPresets();
+                fetchEpidemicAlerts();
+            };
         </script>
     </body>
     </html>
