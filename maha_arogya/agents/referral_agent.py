@@ -65,7 +65,7 @@ def closed_loop_referral_node(state: AgentState) -> Dict[str, Any]:
         hospital_name=hospital_name,
         slot_time=scheduled_at,
         qr_token=qr_token,
-        urgency="तातडीची प्रसूती पूर्व संदर्भ (STAT / High Risk)"
+        urgency="तातडीची प्रसूती पूर्व संदर्भ (STAT / High Risk)", language=state.get("detected_language", "mr")
     )
     
     # 5. Dispatch vernacular alert via FastMCP tool
