@@ -7,7 +7,7 @@ import json
 import uuid
 import base64
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -18,6 +18,10 @@ from maha_arogya.agents.referral_agent import check_and_escalate_referral
 from maha_arogya.agents.surveillance_agent import detect_spatial_temporal_clusters, generate_dho_briefing
 from maha_arogya.mcp.server import check_stock_runway, REFERRAL_STORE, PATIENT_RECORDS
 from maha_arogya.services.voice_nlp import voice_nlp_service
+from maha_arogya.core.auth import verify_role_api_key, UserRole
+from maha_arogya.core.audit import audit_logger, ActionType
+from maha_arogya.core.reliability import idempotency_guard, dead_letter_queue
+from maha_arogya.evals.eval_runner import clinical_eval_runner
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -62,12 +66,36 @@ class HITLApprovalRequest(BaseModel):
 # 1. ENDPOINTS: /voice-intake & /voice-intake/audio
 # ==========================================
 @app.post("/voice-intake", summary="Vernacular Voice Intake & Clinical Triage")
-async def voice_intake(payload: VoiceIntakeRequest):
+async def voice_intake(
+    payload: VoiceIntakeRequest,
+    x_idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key")
+):
     """
-    Accepts spoken symptoms and vitals in Marathi/Hindi.
-    Executes ASHA Voice Copilot -> HL7 FHIR entity extraction -> Clinical Triage (LOW/MED/HIGH)
-    -> Closed-Loop Referral (if HIGH) -> Surveillance ingestion.
+    Accepts spoken symptoms and vitals in Marathi/Hindi/English.
+    Supports:
+    - Network Idempotency via X-Idempotency-Key to prevent double-booking on flaky rural 2G/3G.
+    - Role-Based API Key verification via X-API-Key (ASHA_WORKER, PHC_DOCTOR, STATE_ADMIN).
+    - Clinical Safety Guardrails + DPDP PII Redaction.
     """
+    # 1. Idempotency Check: prevent duplicate bookings from multi-clicks
+    if x_idempotency_key:
+        cached = idempotency_guard.check(x_idempotency_key)
+        if cached:
+            return JSONResponse(
+                content=cached,
+                headers={"X-Idempotent-Replay": "true", "X-Cache": "HIT"}
+            )
+        idempotency_guard.acquire(x_idempotency_key)
+
+    # 2. Role Verification (Optional in demo mode, enforced when header supplied)
+    auth_user = {"user_id": "ASHA-PORTAL", "role": "ASHA_WORKER"}
+    if x_api_key:
+        auth_user = verify_role_api_key(
+            x_api_key,
+            [UserRole.ASHA_WORKER, UserRole.PHC_DOCTOR, UserRole.STATE_ADMIN, UserRole.DHO_OFFICER]
+        )
+
     thread_id = f"session-{uuid.uuid4().hex[:8]}"
     config = {"configurable": {"thread_id": thread_id}}
     
@@ -77,15 +105,19 @@ async def voice_intake(payload: VoiceIntakeRequest):
         "district": payload.district,
         "phc_id": payload.phc_id,
         "raw_input": payload.voice_transcript,
-        "detected_language": payload.language or "mr"
+        "detected_language": payload.language or "mr",
+        "auth_user_id": auth_user["user_id"],
+        "auth_role": auth_user["role"]
     }
     
     try:
         final_state = maha_arogya_graph.invoke(initial_state, config=config)
     except Exception as e:
+        if x_idempotency_key:
+            idempotency_guard.release(x_idempotency_key)
         raise HTTPException(status_code=500, detail=f"Agent workflow execution error: {str(e)}")
         
-    return {
+    res_data = {
         "session_id": thread_id,
         "patient_id": final_state.get("patient_id"),
         "triage_level": final_state.get("triage_level"),
@@ -116,6 +148,12 @@ async def voice_intake(payload: VoiceIntakeRequest):
             "total_entries": len(final_state.get("fhir_bundle", {}).get("entry", []))
         }
     }
+
+    # Store in idempotency guard
+    if x_idempotency_key:
+        idempotency_guard.commit(x_idempotency_key, res_data)
+
+    return res_data
 
 
 @app.post("/voice-intake/audio", summary="Direct Audio File Intake (WAV/MP3/M4A)")
@@ -214,13 +252,78 @@ async def hitl_approve(payload: HITLApprovalRequest):
     referral["hitl_notes"] = payload.notes
     referral["status"] = "BOOKED" if payload.approved else "REJECTED_BY_CLINICIAN"
     
+    # Record Immutable Clinical Governance Audit Log
+    action_type = ActionType.HITL_APPROVAL if payload.approved else ActionType.HITL_REJECTION
+    audit_logger.log(
+        action=action_type,
+        actor_id=payload.reviewer_name,
+        actor_role="PHC_DOCTOR",
+        resource_id=payload.referral_id,
+        decision="APPROVED" if payload.approved else "REJECTED",
+        clinical_rationale=payload.notes or "Medical Officer reviewed referral pass and triage clinical signs.",
+        metadata={
+            "patient_id": referral.get("patient_id", "UNKNOWN"),
+            "hospital_id": referral.get("hospital_id", "UNKNOWN")
+        }
+    )
+
     return {
         "referral_id": payload.referral_id,
         "approved": payload.approved,
         "status": referral["status"],
         "reviewer": payload.reviewer_name,
         "notes": payload.notes,
-        "message": "Clinician HITL verification recorded successfully."
+        "message": "Clinician HITL verification recorded in immutable audit trail."
+    }
+
+
+# ==========================================
+# 5. ENTERPRISE CLINICAL GOVERNANCE & EVALUATION ENDPOINTS
+# ==========================================
+@app.get("/audit-logs", summary="Immutable Clinical Governance & HITL Audit Trail")
+async def get_audit_logs(
+    role: Optional[str] = Query(None, description="Filter by actor role (e.g. PHC_DOCTOR, ASHA_WORKER)"),
+    resource_id: Optional[str] = Query(None, description="Filter by patient or referral ID"),
+    limit: int = Query(50, ge=1, le=200)
+):
+    """Returns chronological, tamper-evident audit logs of clinical decisions and approvals."""
+    records = audit_logger.get_logs(actor_role=role, resource_id=resource_id, limit=limit)
+    return {
+        "status": "SUCCESS",
+        "total_records": len(records),
+        "audit_trail": [r.model_dump() for r in records]
+    }
+
+
+@app.get("/evals/run", summary="Run 20-Case Clinical Benchmark Evaluation")
+async def run_clinical_evals():
+    """
+    Executes the 20-case clinical benchmark across Marathi, Hindi, and English.
+    Returns High-Risk Sensitivity (Recall), Specificity, Accuracy, and Confusion Matrix.
+    """
+    summary = clinical_eval_runner.run_benchmark()
+    return summary
+
+
+@app.get("/reliability/dlq", summary="Dead-Letter Queue for Failed Alerts")
+async def get_dlq_status():
+    """Returns undelivered SMS alerts and referral handshakes captured in the Dead-Letter Queue."""
+    return {
+        "unresolved_count": len(dead_letter_queue.list_unresolved()),
+        "total_queued": len(dead_letter_queue.list_all()),
+        "items": dead_letter_queue.list_all()
+    }
+
+
+@app.get("/reliability/stats", summary="Reliability & Idempotency System Telemetry")
+async def get_reliability_stats():
+    """Returns active idempotency cache metrics and telecommunications retry status."""
+    return {
+        "idempotency_ttl_seconds": int(idempotency_guard.ttl.total_seconds()),
+        "cached_idempotent_keys": len(idempotency_guard._store),
+        "dead_letter_queue_unresolved": len(dead_letter_queue.list_unresolved()),
+        "max_sms_retry_attempts": 3,
+        "telecom_resilience_mode": "ACTIVE (Exponential Backoff + DLQ Routing)"
     }
 
 
@@ -399,8 +502,54 @@ async def dashboard():
                             <h5 class="fw-bold text-dark mb-0"><i class="bi bi-shield-shaded text-success me-2"></i> 3. Surveillance Watchdog</h5>
                             <button class="btn btn-sm btn-outline-success" onclick="fetchEpidemicAlerts()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                         </div>
-                        <p class="text-muted small">Spatial-temporal syndromic clustering & medicine stock-out runway forecasts (< 7 days).</p>
+                        <p class="text-muted small">Spatial-temporal syndromic clustering & medicine stock-out runway forecasts (&lt; 7 days).</p>
                         <div id="epidemicBox" class="mono-box">Click 'Refresh' to load real-time syndromic clusters and drug runways.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Enterprise Features (Clinical Benchmarking & Audit Governance) -->
+            <div class="row g-4 mt-1">
+                <!-- Column 1: Clinical Evaluation Benchmark (20 Cases) -->
+                <div class="col-lg-6">
+                    <div class="card card-agent p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="fw-bold text-dark mb-0">
+                                <i class="bi bi-speedometer2 text-danger me-2"></i> 4. Clinical Benchmark Evaluation (20 Cases)
+                            </h5>
+                            <button id="btnRunEvals" class="btn btn-sm btn-outline-danger fw-bold" onclick="runBenchmarkEvaluation()">
+                                <i class="bi bi-play-circle-fill me-1"></i> Run Benchmark
+                            </button>
+                        </div>
+                        <p class="text-muted small">
+                            Quantitative clinical evaluation across 20 labeled scenarios (Marathi, Hindi, English). Validates High-Risk Recall &amp; Zero Missed Maternal Emergencies.
+                        </p>
+                        <div id="evalScorecards" class="d-flex flex-wrap gap-2 mb-2 d-none">
+                            <span class="badge bg-success p-2" id="scoreRecall">High-Risk Recall: 100%</span>
+                            <span class="badge bg-primary p-2" id="scoreAccuracy">Accuracy: 100%</span>
+                            <span class="badge bg-info text-dark p-2" id="scoreSpec">Specificity: 100%</span>
+                            <span class="badge bg-dark p-2" id="scoreVerdict">Zero Missed Emergencies</span>
+                        </div>
+                        <div id="evalResultBox" class="mono-box">Click 'Run Benchmark' to execute the 20-case clinical validation suite.</div>
+                    </div>
+                </div>
+
+                <!-- Column 2: Clinical Audit Trail & Dead-Letter Queue -->
+                <div class="col-lg-6">
+                    <div class="card card-agent p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="fw-bold text-dark mb-0">
+                                <i class="bi bi-journal-check text-primary me-2"></i> 5. Clinical Governance Audit Trail &amp; DLQ
+                            </h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="fetchAuditLogs()"><i class="bi bi-arrow-clockwise"></i> Audit Trail</button>
+                                <button class="btn btn-outline-secondary" onclick="fetchDLQ()"><i class="bi bi-inbox-fill"></i> DLQ Status</button>
+                            </div>
+                        </div>
+                        <p class="text-muted small">
+                            Immutable clinical decisions, HITL approvals, 48h SLA escalations, and telecommunications Dead-Letter Queue for offline resilience.
+                        </p>
+                        <div id="auditResultBox" class="mono-box">Click 'Audit Trail' or 'DLQ Status' to inspect governance logs.</div>
                     </div>
                 </div>
             </div>
@@ -617,9 +766,49 @@ async def dashboard():
                 document.getElementById('epidemicBox').innerText = data.dho_briefing_text;
             }
 
+            async function runBenchmarkEvaluation() {
+                const btn = document.getElementById('btnRunEvals');
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Evaluating...';
+                try {
+                    const res = await fetch('/evals/run');
+                    const data = await res.json();
+                    document.getElementById('evalScorecards').classList.remove('d-none');
+                    document.getElementById('scoreRecall').innerText = 'High-Risk Sensitivity (Recall): ' + data.high_risk_sensitivity_recall_percent + '%';
+                    document.getElementById('scoreAccuracy').innerText = 'Triage Accuracy: ' + data.overall_triage_accuracy_percent + '%';
+                    document.getElementById('scoreSpec').innerText = 'Specificity: ' + data.high_risk_specificity_percent + '%';
+                    document.getElementById('scoreVerdict').innerText = data.clinical_safety_verdict;
+                    
+                    document.getElementById('evalResultBox').innerText = JSON.stringify({
+                        verdict: data.clinical_safety_verdict,
+                        high_risk_sensitivity_recall: data.high_risk_sensitivity_recall_percent + '%',
+                        overall_triage_accuracy: data.overall_triage_accuracy_percent + '%',
+                        total_cases_evaluated: data.total_benchmark_cases,
+                        confusion_matrix: data.confusion_matrix_high_risk,
+                        sample_cases: data.detailed_case_results.slice(0, 5)
+                    }, null, 2);
+                } catch (e) {
+                    alert('Error running benchmark: ' + e);
+                } finally {
+                    btn.innerHTML = '<i class="bi bi-play-circle-fill me-1"></i> Run Benchmark';
+                }
+            }
+
+            async function fetchAuditLogs() {
+                const res = await fetch('/audit-logs?limit=15');
+                const data = await res.json();
+                document.getElementById('auditResultBox').innerText = JSON.stringify(data, null, 2);
+            }
+
+            async function fetchDLQ() {
+                const res = await fetch('/reliability/dlq');
+                const data = await res.json();
+                document.getElementById('auditResultBox').innerText = JSON.stringify(data, null, 2);
+            }
+
             window.onload = function() {
                 renderPresets();
                 fetchEpidemicAlerts();
+                fetchAuditLogs();
             };
         </script>
     </body>
