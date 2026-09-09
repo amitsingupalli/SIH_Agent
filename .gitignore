@@ -1,10 +1,79 @@
+# =====================================================================
+# MahaArogya-Agent Security & Privacy .gitignore
+# Prevents accidental exposure of personal secrets, API keys, and PII
+# =====================================================================
+
+# 1. Environment Variables & Secret Files (STRICTLY PRIVATE)
+.env
+.env.*
+*.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+local.env
+secret.env
+secrets/
+
+# 2. Cryptographic Keys, Certificates, & Credentials
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.credentials
+credentials.json
+client_secret*.json
+token.json
+tokens.json
+auth.json
+*.passwd
+
+# 3. Python Bytecode, Cache, & Virtual Environments
 __pycache__/
 *.py[cod]
-*.class
+*$py.class
+*.so
 .pytest_cache/
-.env
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 venv/
 .venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# 4. Local Database & State Storage
 *.db
+*.sqlite
 *.sqlite3
+*.sql
+*.dump
+
+# 5. Generated Artifacts & Media (Avoid PII Storage)
 qr_codes/
+*.wav
+*.mp3
+*.m4a
+*.ogg
+logs/
+*.log
+
+# 6. IDE, Editor & OS Artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
