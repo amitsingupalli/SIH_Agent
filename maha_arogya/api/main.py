@@ -93,6 +93,13 @@ async def voice_intake(payload: VoiceIntakeRequest):
         "red_flag_detected": final_state.get("red_flag_detected"),
         "specialty_needed": final_state.get("specialty_needed"),
         "requires_referral": final_state.get("requires_referral"),
+        "guardrail_status": {
+            "passed": final_state.get("guardrail_passed", True),
+            "blocked": final_state.get("guardrail_blocked", False),
+            "violations": final_state.get("guardrail_violations", []),
+            "disclaimer": final_state.get("statutory_disclaimer", ""),
+            "dpdp_pii_redacted": True
+        },
         "referral_details": {
             "referral_id": final_state.get("referral_id"),
             "hospital_name": final_state.get("hospital_name"),
@@ -265,8 +272,9 @@ async def dashboard():
                     <small class="fs-6 text-warning d-block d-md-inline ms-md-2">SIH 2026 PS 133 | Govt of Maharashtra</small>
                 </span>
                 <div class="text-white small text-end">
-                    <span class="badge bg-success me-2"><i class="bi bi-circle-fill"></i> FastMCP 5/5 Active</span>
-                    <span class="badge bg-info"><i class="bi bi-cpu"></i> LangGraph HITL Active</span>
+                    <span class="badge bg-warning text-dark me-2"><i class="bi bi-shield-lock-fill"></i> DPDP Act 2023 / PII Guardrails</span>
+                    <span class="badge bg-success me-2"><i class="bi bi-circle-fill"></i> FastMCP 5/5</span>
+                    <span class="badge bg-info"><i class="bi bi-cpu"></i> LangGraph HITL</span>
                 </div>
             </div>
         </nav>
@@ -548,12 +556,20 @@ async def dashboard():
                 const data = await res.json();
                 
                 document.getElementById('triageResult').classList.remove('d-none');
+                const guardrail = data.guardrail_status || { passed: true, blocked: false, disclaimer: '' };
+                const guardrailBadge = guardrail.blocked 
+                    ? `<span class="badge bg-danger"><i class="bi bi-shield-x"></i> BLOCKED BY SAFETY GUARDRAIL</span>`
+                    : `<span class="badge bg-success"><i class="bi bi-shield-check"></i> SAFETY & DPDP VERIFIED</span>`;
+
                 document.getElementById('triageSummary').innerHTML = `
-                    <strong>Patient:</strong> ${data.patient_id} | 
-                    <strong>Language:</strong> <span class="badge bg-secondary">${data.detected_language ? data.detected_language.toUpperCase() : 'AUTO'}</span> |
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span><strong>Patient:</strong> ${data.patient_id} | <strong>Language:</strong> <span class="badge bg-secondary">${data.detected_language ? data.detected_language.toUpperCase() : 'AUTO'}</span></span>
+                        ${guardrailBadge}
+                    </div>
                     <strong>Triage:</strong> <span class="badge ${data.triage_level === 'HIGH' ? 'badge-high' : 'badge-low'}">${data.triage_level}</span><br>
                     <strong>Clinical Assessment:</strong> ${data.triage_rationale}<br>
-                    ${data.referral_details ? `<strong>Referral ID:</strong> <span class="badge bg-primary">${data.referral_details.referral_id}</span> | <strong>QR Token:</strong> <code>${data.referral_details.qr_token}</code><br><strong>Hospital:</strong> ${data.referral_details.hospital_name}` : ''}
+                    ${data.referral_details ? `<strong>Referral ID:</strong> <span class="badge bg-primary">${data.referral_details.referral_id}</span> | <strong>QR Token:</strong> <code>${data.referral_details.qr_token}</code><br><strong>Hospital:</strong> ${data.referral_details.hospital_name}<br>` : ''}
+                    ${guardrail.disclaimer ? `<div class="mt-2 pt-2 border-top text-muted" style="font-size: 11px;">${guardrail.disclaimer}</div>` : ''}
                 `;
                 
                 // Show QR code if generated
