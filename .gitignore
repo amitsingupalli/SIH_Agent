@@ -6,6 +6,8 @@
 # 1. Environment Variables & Secret Files (STRICTLY PRIVATE)
 .env
 .env.*
+!.env.example
+!.env.template
 *.env
 .env.local
 .env.development
