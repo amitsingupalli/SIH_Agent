@@ -1,10 +1,10 @@
-﻿"""
+"""
 Role-Based Access Control (RBAC) & API-Key Authentication for MahaArogya-Agent.
 Enforces separation of duties across ASHA Workers, PHC Medical Officers, and District Health Officers (DHO).
 """
 
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Any
 from fastapi import Header, HTTPException, Security, status
 from pydantic import BaseModel
 
@@ -34,13 +34,26 @@ DEFAULT_DEMO_USER = AuthenticatedUser(user_id="DEMO-USER-GUEST", role=UserRole.S
 
 
 def verify_role_api_key(
-    allowed_roles: List[UserRole],
-    x_api_key: Optional[str] = Header(None, description="Role-based API Key (e.g., maha-asha-2026, maha-doctor-2026, maha-dho-2026)")
+    arg1: Any = None,
+    arg2: Any = None
 ) -> AuthenticatedUser:
     """
     Validates API key and verifies that user has permission for the requested endpoint.
+    Accepts either (x_api_key, allowed_roles) or (allowed_roles, x_api_key).
     Defaults to demo user if no key is provided during live browser hackathon demonstration.
     """
+    x_api_key: Optional[str] = None
+    allowed_roles: List[UserRole] = []
+
+    if isinstance(arg1, str) or arg1 is None:
+        x_api_key = arg1
+        if isinstance(arg2, list):
+            allowed_roles = arg2
+    elif isinstance(arg1, list):
+        allowed_roles = arg1
+        if isinstance(arg2, str):
+            x_api_key = arg2
+
     if not x_api_key:
         return DEFAULT_DEMO_USER
         
@@ -51,8 +64,8 @@ def verify_role_api_key(
             detail="Invalid X-API-Key provided for MahaArogya health gateway."
         )
         
-    # State Admin has universal access
-    if user.role == UserRole.STATE_ADMIN or user.role in allowed_roles:
+    # State Admin has universal access, or if no specific roles were restricted
+    if not allowed_roles or user.role == UserRole.STATE_ADMIN or user.role in allowed_roles:
         return user
         
     raise HTTPException(
