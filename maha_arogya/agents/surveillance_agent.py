@@ -1,4 +1,4 @@
-﻿"""
+"""
 Surveillance Watchdog Agent Node.
 Executes spatial-temporal clustering on rural PHC syndromic logs, detects localized outbreaks,
 predicts pharmaceutical stock-out runways via FastMCP, and generates formal DHO alert briefings.
@@ -30,6 +30,24 @@ MOCK_PHC_SYNDROMIC_LOGS = [
     {"phc_id": "PHC-PUN-KND", "district": "Pune", "taluka": "Haveli", "syndrome": "Maternal Gestational Hypertension / Preeclampsia", "date": "2026-09-08"},
     {"phc_id": "PHC-PUN-KND", "district": "Pune", "taluka": "Haveli", "syndrome": "Maternal Gestational Hypertension / Preeclampsia", "date": "2026-09-07"}
 ]
+
+
+def record_syndromic_case(phc_id: str, district: str, taluka: str, syndrome: str, patient_id: str = "") -> Dict[str, Any]:
+    """
+    Cross-Agent Linkage: Dynamically ingests syndromic case data from ASHA Voice Copilot
+    into the Surveillance Watchdog stream for immediate epidemic cluster detection.
+    """
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    entry = {
+        "phc_id": phc_id or "PHC-PUN-KND",
+        "district": district or "Pune",
+        "taluka": taluka or "Haveli",
+        "syndrome": syndrome,
+        "date": today_str,
+        "patient_id": patient_id or "UNKNOWN"
+    }
+    MOCK_PHC_SYNDROMIC_LOGS.append(entry)
+    return entry
 
 
 def detect_spatial_temporal_clusters(min_cluster_size: int = 4) -> List[Dict[str, Any]]:
