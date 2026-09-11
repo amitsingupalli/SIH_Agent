@@ -125,12 +125,19 @@
                         <!-- Hero Live Microphone Button & Soundwave Visualizer -->
                         <div class="p-3 bg-light rounded-3 border mb-3">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="fw-bold small text-dark"><i class="bi bi-soundwave me-1 text-danger"></i> आवाज स्पेक्ट्रम (Live Audio Waveform):</span>
-                                <span class="badge bg-secondary-subtle text-secondary small">Web Speech API</span>
+                                <span class="fw-bold small text-dark"><i class="bi bi-soundwave me-1 text-danger"></i> थेट आवाज स्पेक्ट्रम (Live Audio Waveform):</span>
+                                <span class="badge bg-success-subtle text-success small border border-success"><i class="bi bi-broadcast"></i> Web Audio + Speech</span>
                             </div>
                             <!-- Canvas Visualizer -->
                             <div class="waveform-container mb-3">
-                                <canvas id="waveformCanvas" width="600" height="70"></canvas>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span id="waveformStatusBadge" class="small fw-semibold text-info" style="font-size: 0.76rem;">
+                                        <i class="bi bi-circle-fill text-secondary me-1" id="waveformStatusDot"></i>
+                                        <span id="waveformStatusText">माईक तयार (Ready to Speak)</span>
+                                    </span>
+                                    <span id="waveformVolumeBadge" class="badge bg-black bg-opacity-50 border border-secondary text-light font-monospace" style="font-size: 0.7rem;">0% VU</span>
+                                </div>
+                                <canvas id="waveformCanvas" width="600" height="72"></canvas>
                             </div>
                             <!-- Big Mic Tap Target -->
                             <button id="micRecordBtn" type="button" class="btn btn-danger btn-mic w-100 shadow-sm" onclick="AshaCopilot.toggleMicrophone()">
