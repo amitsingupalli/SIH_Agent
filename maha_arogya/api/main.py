@@ -7,9 +7,11 @@ import json
 import uuid
 import base64
 from typing import Optional, Dict, Any
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from maha_arogya.config import settings
@@ -22,6 +24,7 @@ from maha_arogya.core.auth import verify_role_api_key, UserRole
 from maha_arogya.core.audit import audit_logger, ActionType
 from maha_arogya.core.reliability import idempotency_guard, dead_letter_queue
 from maha_arogya.evals.eval_runner import clinical_eval_runner
+from maha_arogya.api.portal_routes import router as portal_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -39,6 +42,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static Asset Files & Directory Setup
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if not STATIC_DIR.exists():
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Mount Dedicated Unified Portal Routes
+app.include_router(portal_router)
 
 
 # Request & Response Schemas
@@ -344,8 +357,19 @@ async def health():
     }
 
 
+@app.get("/pass/{token}", response_class=HTMLResponse, summary="Citizen Vernacular Referral Pass View")
+async def citizen_pass_view(token: str):
+    pass_path = STATIC_DIR / "pass.html"
+    if pass_path.exists():
+        return HTMLResponse(content=pass_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content=f"<h3>MahaArogya Referral Pass: {token}</h3><p>Show this pass at the hospital desk.</p>")
+
+
 @app.get("/", response_class=HTMLResponse, summary="SIH 2026 Interactive Evaluation Dashboard")
 async def dashboard():
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
     return """
     <!DOCTYPE html>
     <html lang="mr">
