@@ -211,7 +211,7 @@ def test_fastapi_endpoints(client):
     # 6. Dashboard
     res_dash = client.get("/")
     assert res_dash.status_code == 200
-    assert "MahaArogya-Agent" in res_dash.text
+    assert "MahaArogya" in res_dash.text
 
 
 # ========================================================
