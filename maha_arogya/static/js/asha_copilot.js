@@ -486,7 +486,7 @@ const AshaCopilot = (function () {
         const submitBtn = document.getElementById("submitIntakeBtn");
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Multi-Agent तपासणी सुरू आहे...`;
+            submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> तपासणी व क्लिनिकल ट्राइएज सुरू आहे...`;
         }
 
         const idempotencyKey = "idemp-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
