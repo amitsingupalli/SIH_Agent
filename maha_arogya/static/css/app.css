@@ -1,0 +1,221 @@
+/* =====================================================================
+   MahaArogya Enterprise UI Design System
+   Government of Maharashtra - Arogya Vibhag | SIH 2026 PS 133
+   ===================================================================== */
+
+:root {
+    --primary-gov: #E05A1B;       /* Maharashtra Saffron Orange */
+    --navy-gov: #0B2545;          /* Official Deep Health Navy */
+    --navy-dark: #071629;         /* Contrast Header & Control */
+    --crimson-emergency: #DC2626; /* High-Risk Triage / Red Flag */
+    --amber-warning: #F59E0B;     /* Moderate Risk / Stock < 7d */
+    --emerald-safe: #10B981;      /* Normal Routine / Attended */
+    --bg-surface: #F8FAFC;        /* Clean Clinical Canvas */
+    --card-bg: #FFFFFF;
+    --border-color: #E2E8F0;
+    --text-main: #0F172A;
+    --text-muted: #64748B;
+    --font-heading: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-vernacular: 'Noto Sans Devanagari', 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+    background-color: var(--bg-surface);
+    color: var(--text-main);
+    font-family: var(--font-vernacular);
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94A3B8;
+}
+
+/* Top Navigation Header */
+.gov-navbar {
+    background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy-gov) 100%);
+    border-bottom: 3px solid var(--primary-gov);
+    box-shadow: 0 4px 20px rgba(11, 37, 69, 0.15);
+}
+
+/* Role Navigation Switcher */
+.nav-role-tab {
+    font-family: var(--font-heading);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    transition: all 0.2s ease-in-out;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.nav-role-tab:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+}
+.nav-role-tab.active {
+    background-color: var(--primary-gov);
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(224, 90, 27, 0.4);
+}
+
+/* Accessible Clinical Cards */
+.card-clinical {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-clinical:hover {
+    box-shadow: 0 8px 25px rgba(15, 23, 42, 0.07);
+}
+
+/* Audio Waveform Canvas */
+.waveform-container {
+    background: #0F172A;
+    border-radius: 12px;
+    padding: 8px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+#waveformCanvas {
+    width: 100%;
+    height: 70px;
+    display: block;
+}
+
+/* Pulsing Microphone Button */
+.btn-mic {
+    height: 56px;
+    border-radius: 12px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.btn-mic-recording {
+    background-color: var(--crimson-emergency) !important;
+    color: #FFFFFF !important;
+    animation: pulse-recording 1.2s infinite alternate;
+}
+@keyframes pulse-recording {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+    100% { transform: scale(1.03); box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
+}
+
+/* One-Tap Symptom Chips (Touch-friendly 48px target) */
+.symptom-chip {
+    padding: 7px 14px;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid #CBD5E1;
+    background: #F8FAFC;
+    color: #334155;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+}
+.symptom-chip:hover {
+    background: #E2E8F0;
+}
+.symptom-chip.selected-red {
+    background: #FEE2E2;
+    border-color: #EF4444;
+    color: #B91C1C;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
+}
+
+/* High Contrast Urgency Badges */
+.badge-triage-high {
+    background: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #F87171;
+    font-weight: 700;
+}
+.badge-triage-med {
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FCD34D;
+    font-weight: 700;
+}
+.badge-triage-low {
+    background: #D1FAE5;
+    color: #065F46;
+    border: 1px solid #6EE7B7;
+    font-weight: 700;
+}
+
+/* Monospace Code / Audit Box */
+.terminal-box {
+    background: #0B1320;
+    color: #38BDF8;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.8rem;
+    border-radius: 10px;
+    padding: 14px;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid #1E293B;
+}
+
+/* Leaflet GIS Map Styling */
+#gisMap {
+    width: 100%;
+    height: 480px;
+    border-radius: 14px;
+    z-index: 1;
+}
+
+/* Offline Sync Notification Bar */
+.offline-banner {
+    background: linear-gradient(90deg, #F59E0B 0%, #D97706 100%);
+    color: #FFFFFF;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Citizen Digital Pass Card */
+.citizen-pass-card {
+    max-width: 480px;
+    margin: 0 auto;
+    background: #FFFFFF;
+    border-radius: 20px;
+    box-shadow: 0 10px 35px rgba(11, 37, 69, 0.12);
+    border: 2px solid #E2E8F0;
+    overflow: hidden;
+}
+.pass-header {
+    background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy-gov) 100%);
+    color: #FFFFFF;
+    padding: 24px;
+    border-bottom: 4px solid var(--primary-gov);
+}
+
+/* Sparkline Trend Canvas */
+.bp-sparkline-canvas {
+    width: 100%;
+    height: 55px;
+}
