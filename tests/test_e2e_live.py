@@ -53,7 +53,7 @@ def run_e2e_tests():
             assert r.status == 200
             html = r.read().decode("utf-8")
             assert "MahaArogya" in html
-            assert "ASHA Voice Copilot" in html
+            assert "ASHA Field Copilot" in html
     run_test("2. UI Dashboard HTML Serving", test_dashboard)
 
     # 3. Voice Intake - English High Risk
@@ -252,13 +252,52 @@ def run_e2e_tests():
             assert d["telecom_resilience_mode"] == "ACTIVE (Exponential Backoff + DLQ Routing)"
     run_test("13. Reliability & Telecommunications DLQ (/reliability/dlq & /stats)", test_reliability_dlq)
 
+    # 14. Doctor Clinical Desk Portal APIs
+    def test_doctor_desk_portal():
+        with urllib.request.urlopen(f"{BASE}/api/doctor/queue") as r:
+            assert r.status == 200
+            d = json.loads(r.read())
+            assert d["status"] == "SUCCESS"
+            assert d["total_queued"] >= 1
+        with urllib.request.urlopen(f"{BASE}/api/doctor/hospital-telemetry?district=Pune") as r:
+            assert r.status == 200
+            d = json.loads(r.read())
+            assert d["total_facilities"] >= 1
+    run_test("14. Doctor Clinical Desk (Queue & Hospital Telemetry)", test_doctor_desk_portal)
+
+    # 15. War Room KPIs & GIS Data
+    def test_war_room_portal():
+        with urllib.request.urlopen(f"{BASE}/api/war-room/kpis") as r:
+            assert r.status == 200
+            d = json.loads(r.read())
+            assert "metrics" in d
+        with urllib.request.urlopen(f"{BASE}/api/war-room/gis-data") as r:
+            assert r.status == 200
+            d = json.loads(r.read())
+            assert len(d["districts"]) >= 3
+            assert len(d["referral_funnel_48h"]) == 5
+    run_test("15. State War Room (KPIs & GIS Outbreak Telemetry)", test_war_room_portal)
+
+    # 16. Citizen Vernacular Referral Pass
+    def test_citizen_pass():
+        with urllib.request.urlopen(f"{BASE}/pass/MAHA-PASS-DEMO") as r:
+            assert r.status == 200
+            html = r.read().decode("utf-8")
+            assert "MahaArogya" in html
+            assert "आपत्कालीन संदर्भ पास" in html
+        with urllib.request.urlopen(f"{BASE}/api/pass/MAHA-PASS-DEMO") as r:
+            assert r.status == 200
+            d = json.loads(r.read())
+            assert d["ambulance_helpline"] == "108"
+    run_test("16. Citizen Vernacular Referral Pass (HTML & REST API)", test_citizen_pass)
+
     failed = [n for n, s, e in results if s == "FAIL"]
     print("=" * 50)
     print(f"LIVE E2E TEST RUN SUMMARY: {len(results) - len(failed)}/{len(results)} PASSED")
     if failed:
         print("Failed tests:", failed)
         sys.exit(1)
-    print("ALL 13 SYSTEM INTEGRATION TESTS PASSED PERFECTLY!")
+    print("ALL 16 SYSTEM INTEGRATION TESTS PASSED PERFECTLY!")
     print("=" * 50)
 
 
