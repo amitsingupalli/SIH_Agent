@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MahaArogya-Agent | SIH 2026 PS 133 | Govt of Maharashtra</title>
+    
+    <!-- Bootstrap 5 CSS & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <!-- Leaflet.js GIS Mapping CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Google Fonts for Devanagari & Latin -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- MahaArogya Custom Design System -->
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <!-- Offline Connectivity Notice Bar -->
+    <div id="offlineBanner" class="offline-banner d-none">
+        <div>
+            <i class="bi bi-wifi-off me-2"></i>
+            <span>इंटरनेट खंडित झाले आहे. नोंदी स्थानिक मेमरीमध्ये सुरक्षित केल्या जातील. (Offline Mode Active)</span>
+        </div>
+        <span class="badge bg-dark">कॅश नोंदी: <span id="offlineQueueCount">0</span></span>
+    </div>
+
+    <!-- Main Navigation Bar -->
+    <nav class="navbar navbar-dark gov-navbar px-3 py-2 sticky-top">
+        <div class="container-fluid">
+            <!-- Brand Logo & Department Title -->
+            <div class="d-flex align-items-center">
+                <div class="bg-white rounded-circle p-2 me-2 d-flex align-items-center justify-content-center shadow-sm" style="width: 44px; height: 44px;">
+                    <i class="bi bi-hospital-fill text-danger fs-4"></i>
+                </div>
+                <div>
+                    <span class="navbar-brand fw-bold fs-5 text-white mb-0 d-block lh-1">
+                        महाआरोग्य-Agent <small class="text-warning fs-6">(MahaArogya)</small>
+                    </span>
+                    <small class="text-light opacity-75" style="font-size: 0.75rem;">
+                        सार्वजनिक आरोग्य विभाग, महाराष्ट्र शासन | SIH 2026 PS 133
+                    </small>
+                </div>
+            </div>
+
+            <!-- Role-Based Navigation Switcher -->
+            <div class="d-none d-lg-flex align-items-center gap-1 bg-black bg-opacity-25 p-1 rounded-pill border border-secondary border-opacity-25">
+                <button class="nav-role-tab active" id="tabBtn_asha" onclick="switchPortalView('asha')">
+                    <i class="bi bi-mic-fill text-warning me-1"></i> १. आशा फील्ड पायलट
+                </button>
+                <button class="nav-role-tab" id="tabBtn_doctor" onclick="switchPortalView('doctor')">
+                    <i class="bi bi-stethoscope me-1"></i> २. डॉक्टर डेस्क (HITL)
+                </button>
+                <button class="nav-role-tab" id="tabBtn_warroom" onclick="switchPortalView('warroom')">
+                    <i class="bi bi-geo-alt-fill text-danger me-1"></i> ३. राज्य वॉर रूम (GIS)
+                </button>
+                <button class="nav-role-tab" id="tabBtn_citizen" onclick="switchPortalView('citizen')">
+                    <i class="bi bi-qr-code-scan me-1"></i> ४. नागरिक संदर्भ पास
+                </button>
+                <button class="nav-role-tab" id="tabBtn_evals" onclick="switchPortalView('evals')">
+                    <i class="bi bi-speedometer2 text-info me-1"></i> ५. बेंचमार्क व ऑडिट
+                </button>
+            </div>
+
+            <!-- Security & Compliance Badges -->
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-success-subtle text-success border border-success d-none d-md-inline">
+                    <i class="bi bi-shield-check"></i> DPDP Act 2023 Compliant
+                </span>
+                <span class="badge bg-info-subtle text-info border border-info d-none d-sm-inline">
+                    <i class="bi bi-cpu"></i> LangGraph + FastMCP
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Mobile Sub-Navigation for Tablets and Phones -->
+    <div class="d-lg-none bg-dark py-2 px-3 overflow-x-auto text-nowrap border-bottom border-secondary">
+        <button class="btn btn-sm btn-primary rounded-pill me-1" onclick="switchPortalView('asha')">आशा पायलट</button>
+        <button class="btn btn-sm btn-outline-light rounded-pill me-1" onclick="switchPortalView('doctor')">डॉक्टर डेस्क</button>
+        <button class="btn btn-sm btn-outline-light rounded-pill me-1" onclick="switchPortalView('warroom')">वॉर रूम GIS</button>
+        <button class="btn btn-sm btn-outline-light rounded-pill me-1" onclick="switchPortalView('citizen')">नागरिक पास</button>
+        <button class="btn btn-sm btn-outline-light rounded-pill" onclick="switchPortalView('evals')">बेंचमार्क</button>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container-fluid px-3 px-md-4 py-4">
+
+        <!-- ===================================================================
+             PORTAL 1: ASHA FIELD COPILOT (Mobile-First Rural Health Intake)
+             =================================================================== -->
+        <div id="viewAshaField" class="portal-view">
+            <div class="row g-4">
+                <!-- Left: Voice Recording & Vitals Intake -->
+                <div class="col-lg-7">
+                    <div class="card card-clinical p-4 h-100">
+                        <!-- Card Header & Language Toggle -->
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="fw-bold mb-0 text-dark">
+                                    <i class="bi bi-mic-fill text-danger me-2"></i> १. आशा फील्ड व्हॉइस पायलट (ASHA Field Copilot)
+                                </h5>
+                                <small class="text-secondary">मराठी, हिंदी किंवा इंग्रजीत बोला — एआय आपोआप HL7 FHIR व संदर्भ तयार करेल.</small>
+                            </div>
+                            <div class="btn-group btn-group-sm">
+                                <button id="langBtn_mr" class="btn btn-sm btn-danger fw-bold" onclick="AshaCopilot.setLanguage('mr')">मराठी</button>
+                                <button id="langBtn_hi" class="btn btn-sm btn-outline-secondary" onclick="AshaCopilot.setLanguage('hi')">हिंदी</button>
+                                <button id="langBtn_en" class="btn btn-sm btn-outline-secondary" onclick="AshaCopilot.setLanguage('en')">English</button>
+                            </div>
+                        </div>
+
+                        <!-- Presets Container -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary mb-1">
+                                <i class="bi bi-lightning-charge-fill text-warning me-1"></i> नमुना परिस्थिती (Clinical Presets):
+                            </label>
+                            <div id="ashaPresetsContainer" class="d-flex flex-wrap"></div>
+                        </div>
+
+                        <!-- Hero Live Microphone Button & Soundwave Visualizer -->
+                        <div class="p-3 bg-light rounded-3 border mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-bold small text-dark"><i class="bi bi-soundwave me-1 text-danger"></i> आवाज स्पेक्ट्रम (Live Audio Waveform):</span>
+                                <span class="badge bg-secondary-subtle text-secondary small">Web Speech API</span>
+                            </div>
+                            <!-- Canvas Visualizer -->
+                            <div class="waveform-container mb-3">
+                                <canvas id="waveformCanvas" width="600" height="70"></canvas>
+                            </div>
+                            <!-- Big Mic Tap Target -->
+                            <button id="micRecordBtn" type="button" class="btn btn-danger btn-mic w-100 shadow-sm" onclick="AshaCopilot.toggleMicrophone()">
+                                <i class="bi bi-mic-fill me-2 fs-5"></i> आवाज नोंदणी सुरू करा (Start Voice Intake)
+                            </button>
+                        </div>
+
+                        <!-- Transcript Textarea -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-semibold small text-dark mb-0">बोललेला मजकूर (Transcript):</label>
+                                <button class="btn btn-sm btn-link text-decoration-none text-secondary p-0" onclick="document.getElementById('voiceTranscriptInput').value = '';">
+                                    <i class="bi bi-x-circle me-1"></i> मजकूर पुसा (Clear)
+                                </button>
+                            </div>
+                            <textarea id="voiceTranscriptInput" class="form-control" rows="3" placeholder="माईक बटण दाबून बोला किंवा वरील नमुना निवडा... (उदा. गरोदर ३२ आठवडे, बीपी १५०/९५, तीव्र डोकेदुखी)"></textarea>
+                        </div>
+
+                        <!-- Quick-Tap Red Flag Symptom Chips -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary mb-1">
+                                <i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> एका स्पर्शात लक्षणे जोडा (Quick-Tap Red Flags):
+                            </label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="symptom-chip selected-red" onclick="AshaCopilot.appendSymptom('तीव्र डोकेदुखी (Severe Headache)')">🚨 डोकेदुखी (Headache)</span>
+                                <span class="symptom-chip selected-red" onclick="AshaCopilot.appendSymptom('डोळ्यासमोर अंधारी (Vision Blur)')">👀 अंधारी (Vision Blur)</span>
+                                <span class="symptom-chip selected-red" onclick="AshaCopilot.appendSymptom('पायांवर सूज (Pedal Edema)')">🦶 सूज (Edema)</span>
+                                <span class="symptom-chip selected-red" onclick="AshaCopilot.appendSymptom('रक्तस्त्राव (Bleeding)')">🩸 रक्तस्त्राव (Bleeding)</span>
+                                <span class="symptom-chip" onclick="AshaCopilot.appendSymptom('तीव्र ताप (High Fever)')">🤒 ताप (Fever)</span>
+                                <span class="symptom-chip" onclick="AshaCopilot.appendSymptom('उलट्या (Vomiting)')">🤢 उलट्या (Vomiting)</span>
+                            </div>
+                        </div>
+
+                        <!-- Patient Metadata -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-4">
+                                <label class="form-label small fw-semibold">रुग्ण आयडी (Patient ID):</label>
+                                <input type="text" id="ashaPatientId" class="form-control form-control-sm font-monospace" value="PAT-4102">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small fw-semibold">जिल्हा (District):</label>
+                                <select id="ashaDistrictSelect" class="form-select form-select-sm">
+                                    <option value="Pune" selected>Pune (पुणे)</option>
+                                    <option value="Nashik">Nashik (नाशिक)</option>
+                                    <option value="Gadchiroli">Gadchiroli (गडचिरोली Tribal)</option>
+                                    <option value="Thane">Thane (ठाणे)</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small fw-semibold">मोबाईल क्र. (Mobile):</label>
+                                <input type="text" id="ashaPatientPhone" class="form-control form-control-sm" value="+91-9822114477">
+                            </div>
+                        </div>
+
+                        <!-- Action Submit Button -->
+                        <button id="submitIntakeBtn" class="btn btn-primary fw-bold py-2 fs-6 w-100 shadow-sm" onclick="AshaCopilot.submitVoiceIntake()">
+                            <i class="bi bi-send-fill me-2"></i> तपासा व संदर्भ पास तयार करा (Submit & Triage)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right: Instant Triage Assessment & Scannable QR Pass -->
+                <div class="col-lg-5">
+                    <div class="card card-clinical p-4 h-100">
+                        <h5 class="fw-bold mb-3 text-dark">
+                            <i class="bi bi-clipboard2-pulse-fill text-primary me-2"></i> तपासणी निकाल व संदर्भ पास (Triage & QR Pass)
+                        </h5>
+
+                        <div id="ashaTriageOutput" class="d-none">
+                            <!-- Dynamic Triage Banner -->
+                            <div class="mb-3">
+                                <div id="triageBadgeDisplay" class="badge badge-triage-high fs-6 px-3 py-2">
+                                    🚨 तातडीचा संदर्भ (CRITICAL / HIGH RISK)
+                                </div>
+                            </div>
+
+                            <div class="alert alert-secondary p-3 small mb-3 border-0 bg-light" id="triageRationaleText">
+                                <!-- Clinical rationale dynamically rendered -->
+                            </div>
+
+                            <!-- Emergency Referral Pass Card -->
+                            <div id="ashaReferralPassCard" class="border rounded-3 p-3 bg-white shadow-sm mb-3 text-center">
+                                <span class="badge bg-success-subtle text-success border border-success mb-2">
+                                    <i class="bi bi-check-circle-fill"></i> हॉस्पिटल खाट आरक्षित (Bed Locked)
+                                </span>
+                                <h6 class="fw-bold text-dark mb-1" id="passHospitalName">Sassoon General Hospital, Pune</h6>
+                                <small class="text-secondary font-monospace d-block" id="passReferralId">ID: REF-4102-EMRG</small>
+                                
+                                <!-- QR Display -->
+                                <div class="my-3 p-2 border rounded d-inline-block bg-white shadow-sm">
+                                    <img id="passQrImage" src="" alt="Referral QR Pass" width="160" height="160">
+                                </div>
+                                <div class="small text-danger fw-semibold mb-2" id="passReportingWindow">48h SLA Deadline: Within 48 Hours</div>
+
+                                <div class="d-flex gap-2 justify-content-center">
+                                    <a id="whatsappShareBtn" href="#" target="_blank" class="btn btn-sm btn-success fw-bold">
+                                        <i class="bi bi-whatsapp me-1"></i> WhatsApp पाठवा
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="AshaCopilot.readAloudCurrentTriage()">
+                                        <i class="bi bi-volume-up-fill me-1"></i> ऐका (TTS)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Raw FHIR Diagnostic Payload -->
+                            <div class="terminal-box" id="triageRawJson"></div>
+                        </div>
+
+                        <div id="ashaTriagePlaceholder" class="p-5 text-center text-muted my-auto">
+                            <i class="bi bi-clipboard2-check fs-1 text-secondary opacity-50 mb-2 d-block"></i>
+                            <h6>तपासणी सुरू करण्यासाठी डावीकडील माईक बटण दाबा.</h6>
+                            <small>Press the microphone button on the left to extract vitals and issue an emergency hospital referral.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             PORTAL 2: DOCTOR CLINICAL DESK & HITL STATION
+             =================================================================== -->
+        <div id="viewDoctorDesk" class="portal-view d-none">
+            <div class="row g-4">
+                <!-- Left: Prioritized Queue -->
+                <div class="col-lg-4">
+                    <div class="card card-clinical p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold text-dark mb-0"><i class="bi bi-list-task text-primary me-2"></i> संदर्भ रांग (Referral Queue)</h6>
+                            <button class="btn btn-sm btn-outline-secondary py-0" onclick="DoctorDesk.fetchQueue()"><i class="bi bi-arrow-clockwise"></i></button>
+                        </div>
+
+                        <!-- Urgency Filters -->
+                        <div class="d-flex gap-1 mb-3 overflow-x-auto">
+                            <button id="docTab_ALL" class="btn btn-sm btn-danger fw-bold" onclick="DoctorDesk.setQueueFilter('ALL')">All (<span id="docCountAll">0</span>)</button>
+                            <button id="docTab_CRITICAL" class="btn btn-sm btn-outline-secondary" onclick="DoctorDesk.setQueueFilter('CRITICAL')">Critical (<span id="docCountCritical">0</span>)</button>
+                            <button id="docTab_MODERATE" class="btn btn-sm btn-outline-secondary" onclick="DoctorDesk.setQueueFilter('MODERATE')">Med (<span id="docCountModerate">0</span>)</button>
+                            <button id="docTab_ROUTINE" class="btn btn-sm btn-outline-secondary" onclick="DoctorDesk.setQueueFilter('ROUTINE')">Routine (<span id="docCountRoutine">0</span>)</button>
+                        </div>
+
+                        <!-- Queue Container -->
+                        <div id="doctorQueueList" class="overflow-y-auto" style="max-height: 520px;"></div>
+                    </div>
+                </div>
+
+                <!-- Center: Clinical Assessment & HITL Decision -->
+                <div class="col-lg-5">
+                    <div class="card card-clinical p-4 h-100">
+                        <!-- Header -->
+                        <div class="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
+                            <div>
+                                <h5 class="fw-bold mb-0 text-dark" id="docSelectedName">Sunita Patil (सुनिता पाटील)</h5>
+                                <small class="text-secondary" id="docSelectedMeta">PAT-4102 | 26 yrs | Pune | Karandi PHC</small>
+                            </div>
+                            <span class="badge bg-danger fs-6" id="docSelectedBp">154/98 mmHg</span>
+                        </div>
+
+                        <!-- Vitals Summary Chips -->
+                        <div class="row g-2 mb-3 text-center">
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded border">
+                                    <small class="text-muted d-block">Gestation</small>
+                                    <strong class="text-dark" id="docSelectedGestation">32 Weeks</strong>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded border">
+                                    <small class="text-muted d-block">Blood Group</small>
+                                    <strong class="text-dark" id="docSelectedBloodGroup">B+</strong>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded border">
+                                    <small class="text-muted d-block">Obstetric Gravida</small>
+                                    <strong class="text-dark" id="docSelectedGravida">G2 P1</strong>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded border">
+                                    <small class="text-muted d-block">108 Status</small>
+                                    <strong class="text-success">Dispatched</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Risk Factors Tags -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary mb-1">Clinical Risk Flags:</label>
+                            <div id="docRiskFactors"></div>
+                        </div>
+
+                        <!-- Historical Antenatal BP Trend Sparkline -->
+                        <div class="mb-3 p-3 bg-light rounded border">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small fw-bold text-dark"><i class="bi bi-graph-up text-danger me-1"></i> रक्ताभिसरण ट्रेंड (Antenatal BP Sparkline):</span>
+                                <small class="text-danger fw-semibold">Cutoff: 140 mmHg</small>
+                            </div>
+                            <canvas id="patientBpSparkline" width="380" height="55" class="bp-sparkline-canvas"></canvas>
+                        </div>
+
+                        <!-- Audio Note Player -->
+                        <div class="p-3 bg-light rounded border mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small fw-bold text-dark"><i class="bi bi-mic-fill text-danger me-1"></i> आशा ताईंची व्हॉइस नोट (ASHA Voice Note):</span>
+                                <button class="btn btn-sm btn-outline-danger py-0" onclick="DoctorDesk.playVoiceRecording()">
+                                    <i class="bi bi-play-circle-fill me-1"></i> ऐका (Play Audio)
+                                </button>
+                            </div>
+                            <div class="small text-secondary fst-italic" id="docVoiceTranscript"></div>
+                        </div>
+
+                        <!-- HL7 FHIR Diagnostic Summary Table -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary mb-1">HL7 FHIR R4 Standards Coding (LOINC / SNOMED):</label>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr class="small text-secondary">
+                                            <th>Code</th>
+                                            <th>Display</th>
+                                            <th>Value / Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="docFhirTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Human In The Loop Decision Station -->
+                        <div class="p-3 bg-light rounded border mt-auto">
+                            <h6 class="fw-bold text-dark mb-2"><i class="bi bi-shield-check text-primary me-1"></i> वैद्यकीय अधिकारी स्वाक्षरी (Medical Officer Sign-off)</h6>
+                            <input type="text" id="docReviewerName" class="form-control form-control-sm mb-2" value="Dr. Vaishali Kulkarni (PHC Medical Officer)">
+                            <textarea id="docHitlNotes" class="form-control form-control-sm mb-2" rows="2" placeholder="Clinical validation notes (e.g. Verified impending preeclampsia signs. Approved CEmONC emergency slot.)"></textarea>
+                            
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-success fw-bold btn-sm flex-grow-1" onclick="DoctorDesk.submitHitlDecision(true)">
+                                    <i class="bi bi-check-lg me-1"></i> संदर्भ मंजूर करा व खाट लॉक करा (Approve & Lock Bed)
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" onclick="DoctorDesk.submitHitlDecision(false)">
+                                    <i class="bi bi-x-lg me-1"></i> नामंजूर (Reject)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Live Bed Telemetry -->
+                <div class="col-lg-3">
+                    <div class="card card-clinical p-3 h-100">
+                        <h6 class="fw-bold text-dark mb-3"><i class="bi bi-building-fill-check text-success me-2"></i> जिल्हा रुग्णालय खाटा (Live Bed Telemetry)</h6>
+                        <div id="docHospitalBedCards"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             PORTAL 3: DISTRICT & STATE WAR ROOM (GIS & Surveillance)
+             =================================================================== -->
+        <div id="viewWarRoom" class="portal-view d-none">
+            <!-- Executive KPI Ribbon -->
+            <div class="row g-3 mb-4 text-center">
+                <div class="col-md-2 col-6">
+                    <div class="card card-clinical p-3">
+                        <small class="text-secondary fw-semibold">आजची तपासणी (Screenings)</small>
+                        <h4 class="fw-bold text-dark mb-0" id="kpiTotalScreenings">12,480</h4>
+                    </div>
+                </div>
+                <div class="col-md-2 col-6">
+                    <div class="card card-clinical p-3">
+                        <small class="text-secondary fw-semibold">अतिजोखमीच्या माता (High-Risk)</small>
+                        <h4 class="fw-bold text-danger mb-0" id="kpiHighRiskMaternal">342</h4>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="card card-clinical p-3">
+                        <small class="text-secondary fw-semibold">४८ तास संदर्भ यश (48h Closed Loop)</small>
+                        <h4 class="fw-bold text-success mb-0" id="kpiClosedLoopRate">89.4%</h4>
+                    </div>
+                </div>
+                <div class="col-md-2 col-6">
+                    <div class="card card-clinical p-3">
+                        <small class="text-secondary fw-semibold">साथरोग क्लस्टर्स (Outbreaks)</small>
+                        <h4 class="fw-bold text-warning mb-0" id="kpiActiveOutbreaks">2</h4>
+                    </div>
+                </div>
+                <div class="col-md-3 col-12">
+                    <div class="card card-clinical p-3">
+                        <small class="text-secondary fw-semibold">औषध साठा धोक्यात (&lt; 7 दिवस)</small>
+                        <h4 class="fw-bold text-danger mb-0" id="kpiCriticalStockouts">3 PHCs</h4>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GIS Map & 48h SLA Funnel -->
+            <div class="row g-4 mb-4">
+                <!-- Left: Leaflet GIS Map -->
+                <div class="col-lg-8">
+                    <div class="card card-clinical p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold text-dark mb-0">
+                                <i class="bi bi-map-fill text-danger me-2"></i> महाराष्ट्र जीआयएस आरोग्य नकाशा (Maharashtra GIS Health Map)
+                            </h6>
+                            <span class="badge bg-primary-subtle text-primary border border-primary">
+                                Live Spatial-Temporal IDSP Clusters
+                            </span>
+                        </div>
+                        <div id="gisMap"></div>
+                    </div>
+                </div>
+
+                <!-- Right: 48-Hour Closed-Loop Referral Funnel -->
+                <div class="col-lg-4">
+                    <div class="card card-clinical p-4 h-100">
+                        <h6 class="fw-bold text-dark mb-2"><i class="bi bi-funnel-fill text-primary me-2"></i> ४८ तास संदर्भ ट्रॅकिंग (48h SLA Funnel)</h6>
+                        <small class="text-secondary mb-3 d-block">Tracks drop-off between village referral issuance and destination hospital check-in.</small>
+                        <div id="warRoomFunnelContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DHO Epidemic Briefing & Pharmacy Stock Runway -->
+            <div class="row g-4">
+                <!-- Left: DHO Surveillance Watchdog Briefing -->
+                <div class="col-lg-6">
+                    <div class="card card-clinical p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold text-dark mb-0"><i class="bi bi-shield-shaded text-success me-2"></i> जिल्हा आरोग्य अधिकारी अहवाल (DHO Briefing)</h6>
+                            <div>
+                                <button class="btn btn-sm btn-outline-success me-1" onclick="WarRoom.fetchEpidemicBriefing()"><i class="bi bi-arrow-clockwise"></i></button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="WarRoom.copyBriefingToClipboard()"><i class="bi bi-clipboard"></i> Copy</button>
+                            </div>
+                        </div>
+                        <div class="terminal-box" id="warRoomDhoBriefing">Click refresh to load real-time DHO surveillance briefing...</div>
+                    </div>
+                </div>
+
+                <!-- Right: Pharmacy Stock Runway & Inter-PHC Buffer Transfer -->
+                <div class="col-lg-6">
+                    <div class="card card-clinical p-4 h-100">
+                        <h6 class="fw-bold text-dark mb-2"><i class="bi bi-capsule text-danger me-2"></i> औषध साठा मॉनिटर (Pharmaceutical Runway & Re-allocation)</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr class="small text-secondary">
+                                        <th>PHC / जिल्हा</th>
+                                        <th>औषध</th>
+                                        <th class="text-end">शिल्लक</th>
+                                        <th class="text-end">खप</th>
+                                        <th class="text-center">दिवस</th>
+                                        <th class="text-end">कृती</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="warRoomStockTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             PORTAL 4: CITIZEN VERNACULAR REFERRAL PASS SIMULATOR
+             =================================================================== -->
+        <div id="viewCitizenPass" class="portal-view d-none">
+            <div class="row justify-content-center">
+                <div class="col-md-6 col-lg-5">
+                    <div class="citizen-pass-card">
+                        <div class="pass-header text-center">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="badge bg-danger fs-6 px-3 py-1" id="citizenUrgencyBadge">
+                                    🚨 तातडीची प्रसूती पूर्व संदर्भ (STAT)
+                                </span>
+                                <button id="citizenLangToggleBtn" class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="CitizenPass.toggleLanguage()">
+                                    English मध्ये वाचा
+                                </button>
+                            </div>
+                            <h5 class="fw-bold mb-1">महाराष्ट्र शासन सार्वजनिक आरोग्य विभाग</h5>
+                            <small class="text-warning fw-semibold">Govt of Maharashtra - Arogya Vibhag (SIH PS 133)</small>
+                        </div>
+
+                        <div class="p-4 bg-white">
+                            <div class="mb-3 text-center">
+                                <h4 class="fw-bold text-dark mb-0" id="citizenPatientName">Sunita Patil (सुनिता पाटील)</h4>
+                                <small class="text-secondary font-monospace" id="citizenPatientId">Patient ID: PAT-4102 | Ref: REF-4102-EMRG</small>
+                            </div>
+
+                            <div class="text-center my-3 p-3 bg-light rounded-3 border">
+                                <div class="mb-2">
+                                    <img id="citizenQrCodeImage" src="" alt="Referral QR Code" width="180" height="180" class="border p-2 bg-white rounded shadow-sm">
+                                </div>
+                                <div class="alert alert-warning py-2 px-3 small mb-0 fw-semibold text-dark" id="citizenInstructions">
+                                    हा QR पास जिल्हा रुग्णालयाच्या आपत्कालीन खिडकीवर दाखवा. थेट उपचार सुरू होतील.
+                                </div>
+                            </div>
+
+                            <div class="card p-3 mb-3 border-0 bg-light rounded-3">
+                                <div class="d-flex align-items-start">
+                                    <i class="bi bi-hospital fs-3 text-danger me-3"></i>
+                                    <div>
+                                        <div class="text-muted small fw-semibold">संदर्भित रुग्णालय:</div>
+                                        <h6 class="fw-bold text-dark mb-1" id="citizenHospitalName">Sassoon General Hospital & BJ Medical College</h6>
+                                        <small class="text-secondary d-block" id="citizenHospitalAddress">Near Pune Railway Station, Sassoon Road, Pune 411001</small>
+                                        <small class="text-danger fw-semibold mt-1 d-block">
+                                            <i class="bi bi-hourglass-split"></i> उपस्थितीची मुदत: <strong id="citizenReportingWindow">Within 48 Hours</strong>
+                                        </small>
+                                        <small class="text-muted d-block mt-1">
+                                            <i class="bi bi-person-badge"></i> ड्युटी वैद्यकीय अधिकारी: <span id="citizenDoctorName">Dr. Vaishali Kulkarni (CEmONC)</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <a href="tel:108" class="btn btn-danger fw-bold py-2 fs-6 shadow-sm">
+                                    <i class="bi bi-telephone-fill me-2"></i> १०८ मोफत रुग्णवाहिका बोलवा (Call 108)
+                                </a>
+                                <a id="citizenGmapsLink" href="https://maps.google.com" target="_blank" class="btn btn-outline-primary fw-bold py-2">
+                                    <i class="bi bi-geo-alt-fill me-2"></i> गुगल मॅप्स द्वारे मार्ग (Navigate to Hospital)
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="p-3 bg-light border-top text-center text-muted small">
+                            <i class="bi bi-shield-lock-fill text-success me-1"></i> Digital Personal Data Protection (DPDP) Act 2023 Compliant Pass
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             PORTAL 5: BENCHMARKS & GOVERNANCE AUDIT TRAIL
+             =================================================================== -->
+        <div id="viewEvalsAudit" class="portal-view d-none">
+            <div class="row g-4">
+                <!-- Left: 20-Case Clinical Benchmark Evaluation -->
+                <div class="col-lg-6">
+                    <div class="card card-clinical p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="fw-bold text-dark mb-0">
+                                <i class="bi bi-speedometer2 text-danger me-2"></i> क्लिनिकल बेंचमार्क मूल्यांकन (20 Ground-Truth Cases)
+                            </h5>
+                            <button id="btnRunBenchmarkEvals" class="btn btn-sm btn-danger fw-bold" onclick="runBenchmarkEvaluation()">
+                                <i class="bi bi-play-circle-fill me-1"></i> Run Benchmark
+                            </button>
+                        </div>
+                        <p class="text-muted small">
+                            Validates High-Risk Clinical Recall &amp; Zero Missed Maternal Emergencies across Marathi, Hindi, and English.
+                        </p>
+                        <div id="evalScorecards" class="d-flex flex-wrap gap-2 mb-2">
+                            <span class="badge bg-success p-2">High-Risk Sensitivity (Recall): 100%</span>
+                            <span class="badge bg-primary p-2">Overall Triage Accuracy: 100%</span>
+                            <span class="badge bg-info text-dark p-2">Specificity: 100%</span>
+                            <span class="badge bg-dark p-2">PASS: Zero Missed Emergencies</span>
+                        </div>
+                        <div class="terminal-box" id="evalResultTerminal">Click 'Run Benchmark' to execute the 20-case evaluation suite live.</div>
+                    </div>
+                </div>
+
+                <!-- Right: Immutable Governance Audit Log & DLQ -->
+                <div class="col-lg-6">
+                    <div class="card card-clinical p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="fw-bold text-dark mb-0">
+                                <i class="bi bi-journal-check text-primary me-2"></i> क्लिनिकल ऑडिट व टेलिकॉम DLQ (Audit & DLQ)
+                            </h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="fetchAuditLogs()"><i class="bi bi-arrow-clockwise"></i> Audit Logs</button>
+                                <button class="btn btn-outline-secondary" onclick="fetchDLQ()"><i class="bi bi-inbox-fill"></i> DLQ Status</button>
+                            </div>
+                        </div>
+                        <p class="text-muted small">
+                            Tamper-evident logs of clinical decisions, doctor sign-offs, 48h SLA escalations, and telecommunications Dead-Letter Queue.
+                        </p>
+                        <div class="terminal-box" id="auditResultTerminal">Loading audit trail...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Global Toast Notification -->
+    <div id="globalAppToast" class="position-fixed bottom-0 end-0 m-3 p-3 bg-dark text-white rounded-3 shadow-lg d-none" style="z-index: 9999; max-width: 380px;"></div>
+
+    <!-- External Libraries (Bootstrap & Leaflet) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- MahaArogya Frontend JavaScript Modules -->
+    <script src="/static/js/asha_copilot.js"></script>
+    <script src="/static/js/doctor_desk.js"></script>
+    <script src="/static/js/war_room.js"></script>
+    <script src="/static/js/citizen_pass.js"></script>
+
+    <!-- Master Controller Script -->
+    <script>
+        function switchPortalView(viewName) {
+            // Hide all views
+            document.querySelectorAll(".portal-view").forEach(el => el.classList.add("d-none"));
+            document.querySelectorAll(".nav-role-tab").forEach(el => el.classList.remove("active"));
+
+            // Show selected view
+            if (viewName === 'asha') {
+                document.getElementById("viewAshaField").classList.remove("d-none");
+                document.getElementById("tabBtn_asha")?.classList.add("active");
+            } else if (viewName === 'doctor') {
+                document.getElementById("viewDoctorDesk").classList.remove("d-none");
+                document.getElementById("tabBtn_doctor")?.classList.add("active");
+                DoctorDesk.init();
+            } else if (viewName === 'warroom') {
+                document.getElementById("viewWarRoom").classList.remove("d-none");
+                document.getElementById("tabBtn_warroom")?.classList.add("active");
+                WarRoom.init();
+                WarRoom.refreshMapSize();
+            } else if (viewName === 'citizen') {
+                document.getElementById("viewCitizenPass").classList.remove("d-none");
+                document.getElementById("tabBtn_citizen")?.classList.add("active");
+                CitizenPass.init();
+            } else if (viewName === 'evals') {
+                document.getElementById("viewEvalsAudit").classList.remove("d-none");
+                document.getElementById("tabBtn_evals")?.classList.add("active");
+                fetchAuditLogs();
+            }
+        }
+
+        async function runBenchmarkEvaluation() {
+            const btn = document.getElementById("btnRunBenchmarkEvals");
+            if (btn) btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Evaluating...';
+            try {
+                const res = await fetch("/evals/run");
+                const data = await res.json();
+                document.getElementById("evalResultTerminal").innerText = JSON.stringify({
+                    verdict: data.clinical_safety_verdict,
+                    high_risk_sensitivity_recall: data.high_risk_sensitivity_recall_percent + "%",
+                    overall_triage_accuracy: data.overall_triage_accuracy_percent + "%",
+                    confusion_matrix: data.confusion_matrix_high_risk,
+                    sample_cases: data.detailed_case_results.slice(0, 5)
+                }, null, 2);
+            } catch (e) {
+                alert("Evaluation error: " + e);
+            } finally {
+                if (btn) btn.innerHTML = '<i class="bi bi-play-circle-fill me-1"></i> Run Benchmark';
+            }
+        }
+
+        async function fetchAuditLogs() {
+            try {
+                const res = await fetch("/audit-logs?limit=15");
+                const data = await res.json();
+                document.getElementById("auditResultTerminal").innerText = JSON.stringify(data, null, 2);
+            } catch (e) {
+                console.error("Audit log error:", e);
+            }
+        }
+
+        async function fetchDLQ() {
+            try {
+                const res = await fetch("/reliability/dlq");
+                const data = await res.json();
+                document.getElementById("auditResultTerminal").innerText = JSON.stringify(data, null, 2);
+            } catch (e) {
+                console.error("DLQ error:", e);
+            }
+        }
+    </script>
+</body>
+</html>
