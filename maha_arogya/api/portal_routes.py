@@ -395,7 +395,8 @@ async def sync_offline_records(payload: OfflineSyncBatchRequest):
         }
         
         try:
-            res = maha_arogya_graph.invoke(initial_state)
+            thread_id = f"sync-{payload.worker_id}-{idx}-{int(datetime.now(timezone.utc).timestamp())}"
+            res = maha_arogya_graph.invoke(initial_state, config={"configurable": {"thread_id": thread_id}})
             synced_results.append({
                 "patient_id": res.get("patient_id"),
                 "triage_level": res.get("triage_level"),
